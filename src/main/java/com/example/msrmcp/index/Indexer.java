@@ -4,20 +4,22 @@ import com.example.msrmcp.db.*;
 import com.example.msrmcp.model.IndexResult;
 
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
- * Orchestrates a full re-index: clears co-change data, walks git history,
- * then runs PMD analysis. Commit/file-change records are upserted (INSERT OR IGNORE)
- * so they survive a partial re-index.
+ * Orchestrates git history indexing and static analysis.
+ *
+ * <p>{@link #runFull} rebuilds everything from scratch (use for {@code refresh_index}).
+ * {@link #runIncremental} only processes commits newer than the last indexed tip;
+ * it delegates to {@link #runFull} when the DB is empty.
  */
 public final class Indexer {
 
     private Indexer() {}
 
     /**
-     * Performs a full index of the repository at {@code repoDir}.
-     *
-     * @return summary result record
+     * Full re-index: clears coupling, walks the entire git history, runs
+     * LocCounter and PmdRunner over all files.
      */
     public static IndexResult runFull(Path repoDir, Database db) {
         long start = System.currentTimeMillis();
@@ -28,17 +30,56 @@ public final class Indexer {
         FileCouplingDao fileCouplingDao = db.attach(FileCouplingDao.class);
 
         try {
-            // Coupling must be rebuilt from scratch (pre-aggregated)
             fileCouplingDao.deleteAll();
 
-            int commits = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao).walk();
-            // LocCounter runs first (all languages, LOC only).
-            // PmdRunner then overwrites Java entries with cyclo + cognitive complexity.
+            GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao).walk();
             new LocCounter(repoDir, fileChangeDao, fileMetricsDao).count();
-            int files   = new PmdRunner(repoDir, fileMetricsDao).analyze();
+            int files = new PmdRunner(repoDir, fileMetricsDao).analyze();
 
             long duration = System.currentTimeMillis() - start;
-            return new IndexResult("ok", files, commits, duration, null);
+            return new IndexResult("ok", files, walk.commitsProcessed(), duration, null);
+
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - start;
+            return new IndexResult("error", 0, 0, duration, e.getMessage());
+        }
+    }
+
+    /**
+     * Incremental index: only processes commits newer than the already-indexed tip.
+     * Falls back to {@link #runFull} when the DB is empty.
+     *
+     * <p>Because {@link FileCouplingDao#upsertBatch} accumulates co-change counts,
+     * no coupling data needs to be cleared — new co-changes are added on top.
+     */
+    public static IndexResult runIncremental(Path repoDir, Database db) {
+        long start = System.currentTimeMillis();
+
+        CommitDao       commitDao       = db.attach(CommitDao.class);
+        FileChangeDao   fileChangeDao   = db.attach(FileChangeDao.class);
+        FileMetricsDao  fileMetricsDao  = db.attach(FileMetricsDao.class);
+        FileCouplingDao fileCouplingDao = db.attach(FileCouplingDao.class);
+
+        try {
+            Optional<String> latestHash = commitDao.findLatestHash();
+            if (latestHash.isEmpty()) {
+                // DB is empty — fall back to full index
+                return runFull(repoDir, db);
+            }
+
+            GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao)
+                    .walk(latestHash.get());
+
+            if (walk.commitsProcessed() == 0) {
+                long duration = System.currentTimeMillis() - start;
+                return new IndexResult("ok", 0, 0, duration, null);
+            }
+
+            new LocCounter(repoDir, fileChangeDao, fileMetricsDao).count(walk.changedPaths());
+            int files = new PmdRunner(repoDir, fileMetricsDao).analyze(walk.changedPaths());
+
+            long duration = System.currentTimeMillis() - start;
+            return new IndexResult("ok", files, walk.commitsProcessed(), duration, null);
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;

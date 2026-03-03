@@ -48,16 +48,17 @@ public final class Main {
         FileMetricsDao  fileMetricsDao  = db.attach(FileMetricsDao.class);
         FileCouplingDao fileCouplingDao = db.attach(FileCouplingDao.class);
 
-        // ── [3] Index if empty ────────────────────────────────────────────
-        if (commitDao.count() == 0) {
-            System.err.println("MSR: no index found — running full index...");
-            IndexResult r = Indexer.runFull(repoDir, db);
-            if ("error".equals(r.status())) {
-                System.err.println("MSR: indexing failed: " + r.errorMessage());
-            } else {
-                System.err.printf("MSR: indexed %d commits, %d files in %d ms%n",
-                        r.commitsProcessed(), r.filesIndexed(), r.durationMs());
-            }
+        // ── [3] Incremental index on every startup ────────────────────────
+        // runIncremental() delegates to runFull() when the DB is empty.
+        System.err.println("MSR: checking for new commits...");
+        IndexResult r = Indexer.runIncremental(repoDir, db);
+        if ("error".equals(r.status())) {
+            System.err.println("MSR: indexing failed: " + r.errorMessage());
+        } else if (r.commitsProcessed() > 0) {
+            System.err.printf("MSR: indexed %d commits, %d files in %d ms%n",
+                    r.commitsProcessed(), r.filesIndexed(), r.durationMs());
+        } else {
+            System.err.println("MSR: index is up to date.");
         }
 
         // ── [4] Build MCP server ──────────────────────────────────────────

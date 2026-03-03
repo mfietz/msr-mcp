@@ -8,7 +8,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -33,9 +35,13 @@ final class LocCounter {
         this.fileMetricsDao = fileMetricsDao;
     }
 
-    /** @return number of files for which LOC was recorded */
+    /** Counts LOC for all git-tracked files. */
     int count() {
-        List<String> paths = fileChangeDao.findDistinctPaths();
+        return count(new HashSet<>(fileChangeDao.findDistinctPaths()));
+    }
+
+    /** Counts LOC only for the given repo-relative paths (incremental use). */
+    int count(Set<String> paths) {
         long now = System.currentTimeMillis();
         List<FileMetricsRecord> batch = new ArrayList<>();
 

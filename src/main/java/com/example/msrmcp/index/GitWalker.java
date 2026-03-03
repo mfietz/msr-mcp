@@ -44,36 +44,58 @@ final class GitWalker {
         this.fileCouplingDao = fileCouplingDao;
     }
 
-    /** @return number of commits processed */
-    int walk() throws IOException {
+    record WalkResult(int commitsProcessed, Set<String> changedPaths) {}
+
+    /**
+     * Full walk — processes every commit reachable from HEAD.
+     * Caller is responsible for clearing {@code file_coupling} beforehand.
+     */
+    WalkResult walk() throws IOException {
+        return walk(null);
+    }
+
+    /**
+     * Incremental walk — only processes commits that are not ancestors of
+     * {@code stopAtHash}. Pass {@code null} for a full walk.
+     *
+     * <p>Uses JGit {@code markUninteresting} so the RevWalk stops naturally
+     * at the already-indexed boundary without scanning the entire history.
+     */
+    WalkResult walk(String stopAtHash) throws IOException {
         try (Git git = Git.open(repoDir.toFile());
              Repository repo = git.getRepository();
              RevWalk revWalk = new RevWalk(repo)) {
 
             ObjectId headId = resolveDefaultBranch(repo);
-            if (headId == null) return 0;
+            if (headId == null) return new WalkResult(0, Set.of());
 
             revWalk.markStart(revWalk.parseCommit(headId));
+
+            if (stopAtHash != null) {
+                ObjectId stopId = repo.resolve(stopAtHash);
+                if (stopId != null) {
+                    revWalk.markUninteresting(revWalk.parseCommit(stopId));
+                }
+            }
 
             DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
             df.setRepository(repo);
             df.setDiffComparator(RawTextComparator.DEFAULT);
             df.setDetectRenames(true);
 
-            // co-change accumulation: pair (fileA, fileB) → count
-            // Key is "fileA\0fileB" where fileA < fileB
-            Map<String, int[]> coChanges = new HashMap<>();
-            Map<String, int[]> totalChanges = new HashMap<>(); // file → count
+            Map<String, int[]> coChanges   = new HashMap<>();
+            Map<String, int[]> totalChanges = new HashMap<>();
+            Set<String> allChangedPaths    = new HashSet<>();
 
-            List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
+            List<CommitRecord>     commitBatch = new ArrayList<>(BATCH_SIZE);
             List<FileChangeRecord> changeBatch = new ArrayList<>(BATCH_SIZE * 4);
             int processed = 0;
 
             for (RevCommit commit : revWalk) {
-                String hash = commit.getName();
-                long authorDate = commit.getAuthorIdent().getWhen().getTime();
+                String hash      = commit.getName();
+                long authorDate  = commit.getAuthorIdent().getWhen().getTime();
                 String firstLine = commit.getShortMessage();
-                String jiraSlug = JiraSlugExtractor.extract(firstLine);
+                String jiraSlug  = JiraSlugExtractor.extract(firstLine);
 
                 commitBatch.add(new CommitRecord(hash, authorDate, firstLine, jiraSlug));
 
@@ -81,9 +103,9 @@ final class GitWalker {
                 for (String path : changedPaths) {
                     changeBatch.add(new FileChangeRecord(hash, path));
                     totalChanges.computeIfAbsent(path, k -> new int[1])[0]++;
+                    allChangedPaths.add(path);
                 }
 
-                // Accumulate co-changes: every pair of files in this commit
                 accumulateCoChanges(changedPaths, coChanges);
 
                 processed++;
@@ -92,17 +114,14 @@ final class GitWalker {
                 }
             }
 
-            // Flush remaining
             if (!commitBatch.isEmpty()) {
                 flush(commitBatch, changeBatch);
             }
 
             df.close();
-
-            // Flush co-change map → file_coupling table
             flushCoupling(coChanges, totalChanges);
 
-            return processed;
+            return new WalkResult(processed, allChangedPaths);
         }
     }
 
@@ -117,7 +136,6 @@ final class GitWalker {
                                                   DiffFormatter df) throws IOException {
         List<DiffEntry> diffs;
         if (commit.getParentCount() == 0) {
-            // Root commit — compare against empty tree
             try (ObjectReader reader = repo.newObjectReader()) {
                 CanonicalTreeParser newTree = new CanonicalTreeParser();
                 newTree.reset(reader, commit.getTree().getId());
@@ -167,7 +185,6 @@ final class GitWalker {
             records.add(new FileCouplingRecord(a, b, co, ta, tb));
         }
         if (!records.isEmpty()) {
-            // Batch in chunks to avoid SQLite statement size limits
             int chunkSize = 500;
             for (int i = 0; i < records.size(); i += chunkSize) {
                 fileCouplingDao.upsertBatch(records.subList(i, Math.min(i + chunkSize, records.size())));

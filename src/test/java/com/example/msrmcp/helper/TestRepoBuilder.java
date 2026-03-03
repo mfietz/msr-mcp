@@ -79,6 +79,28 @@ public final class TestRepoBuilder {
         return dir;
     }
 
+    /**
+     * Appends a single commit to an already-built repo on disk.
+     * Used by incremental-indexing tests to simulate a {@code git pull}.
+     */
+    public static void appendCommit(Path repoDir, String message, String filePath, String content)
+            throws Exception {
+        try (Git git = Git.open(repoDir.toFile())) {
+            StoredConfig cfg = git.getRepository().getConfig();
+            cfg.setString("user", null, "name", "Test Author");
+            cfg.setString("user", null, "email", "test@example.com");
+            cfg.save();
+
+            Path file = repoDir.resolve(filePath);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, content);
+            git.add().addFilepattern(filePath).call();
+
+            PersonIdent author = new PersonIdent("Test Author", "test@example.com");
+            git.commit().setMessage(message).setAuthor(author).setCommitter(author).call();
+        }
+    }
+
     /** Recursively delete a directory (for @AfterAll cleanup). */
     public static void deleteRecursively(Path dir) throws IOException {
         if (dir == null || !Files.exists(dir)) return;
