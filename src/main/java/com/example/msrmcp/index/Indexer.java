@@ -32,6 +32,9 @@ public final class Indexer {
             fileCouplingDao.deleteAll();
 
             int commits = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao).walk();
+            // LocCounter runs first (all languages, LOC only).
+            // PmdRunner then overwrites Java entries with cyclo + cognitive complexity.
+            new LocCounter(repoDir, fileChangeDao, fileMetricsDao).count();
             int files   = new PmdRunner(repoDir, fileMetricsDao).analyze();
 
             long duration = System.currentTimeMillis() - start;

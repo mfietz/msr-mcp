@@ -52,5 +52,8 @@ public interface FileChangeDao {
     @SqlQuery("SELECT file_path FROM file_changes WHERE commit_hash = :commitHash")
     List<String> findPathsByCommit(@Bind("commitHash") String commitHash);
 
+    @SqlQuery("SELECT DISTINCT file_path FROM file_changes")
+    List<String> findDistinctPaths();
+
     record FileChangeFrequencyRow(String filePath, int changeFrequency) {}
 }

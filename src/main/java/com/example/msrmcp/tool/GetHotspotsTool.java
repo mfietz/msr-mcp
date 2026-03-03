@@ -41,8 +41,8 @@ public final class GetHotspotsTool {
         try {
             int topN = intArg(args, "topN", 20);
             Long sinceEpochMs = longArg(args, "sinceEpochMs");
-            String ext = stringArg(args, "extension", ".java");
-            String extPattern = "%" + ext;
+            String ext = stringArg(args, "extension", "");
+            String extPattern = "%" + ext;  // "" → "%" matches all files
 
             List<FileChangeFrequencyRow> rows =
                     fileChangeDao.findTopChangedFiles(sinceEpochMs, extPattern, topN);

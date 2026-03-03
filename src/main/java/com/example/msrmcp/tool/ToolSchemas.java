@@ -16,7 +16,7 @@ final class ToolSchemas {
                 "sinceEpochMs", Map.of("type", "integer",
                         "description", "Only include commits after this Unix timestamp in ms"),
                 "extension", Map.of("type", "string",
-                        "description", "File extension filter, e.g. \".java\" (default)")),
+                        "description", "File extension filter, e.g. \".java\" or \".ts\". Default: all files")),
                 List.of(), null, null, null);
     }
 
