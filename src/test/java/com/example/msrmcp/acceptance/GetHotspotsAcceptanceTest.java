@@ -12,6 +12,7 @@ import org.junit.jupiter.api.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -130,5 +131,23 @@ class GetHotspotsAcceptanceTest {
         System.err.println("hotspot JSON: " + json);
         assertThat(json).doesNotContain("\"linesOfCode\":0");
         assertThat(json).doesNotContain("\"cyclomaticComplexity\":-1");
+    }
+
+    @Test
+    void sinceEpochMs_excludesCommitsBeforeCutoff() {
+        // All test commits are from 2024-01-01; a 2025 cutoff should exclude them all
+        long cutoff = Instant.parse("2025-01-01T00:00:00Z").toEpochMilli();
+        CallToolResult result = hotspotsTool.handle(Map.of("topN", 5, "sinceEpochMs", cutoff));
+        String json = ((TextContent) result.content().getFirst()).text();
+        assertThat(json).isEqualTo("[]");
+    }
+
+    @Test
+    void topN_limitsResultCount() {
+        // Repo has 2 files; topN=1 must return exactly 1 JSON object
+        CallToolResult result = hotspotsTool.handle(Map.of("topN", 1));
+        String json = ((TextContent) result.content().getFirst()).text();
+        long objectCount = json.chars().filter(c -> c == '{').count();
+        assertThat(objectCount).isEqualTo(1);
     }
 }

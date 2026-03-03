@@ -84,4 +84,5 @@ class GetTemporalCouplingAcceptanceTest {
         assertThat(result.isError()).isFalse();
         // Result may be empty (old test commits) but must not throw
     }
+
 }
