@@ -72,8 +72,9 @@ public final class Main {
                         commitDao, fileChangeDao, fileMetricsDao, fileCouplingDao, repoDir, db))
                 .build();
 
-        // ── [5] Block until client disconnects ────────────────────────────
+        // ── [5] Serve until client disconnects ───────────────────────────
+        // StdioServerTransportProvider runs non-daemon threads that keep the JVM alive
+        // until stdin closes (client disconnects). No explicit blocking needed.
         System.err.println("MSR MCP Server ready (STDIO).");
-        server.closeGracefully();
     }
 }
