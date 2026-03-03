@@ -1,0 +1,9 @@
+{
+  "aliases": {
+    "msr-mcp": {
+      "script-ref": "https://github.com/mfietz/msr-mcp/releases/latest/download/msr-mcp-server.jar",
+      "description": "MSR MCP Server — Mining Software Repository analyses (hotspots, coupling, history) via MCP protocol",
+      "java": "25+"
+    }
+  }
+}
