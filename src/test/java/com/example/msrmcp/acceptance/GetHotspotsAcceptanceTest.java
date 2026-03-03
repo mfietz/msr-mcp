@@ -116,4 +116,19 @@ class GetHotspotsAcceptanceTest {
         String json = ((TextContent) result.content().getFirst()).text();
         assertThat(json).contains("Main.java");
     }
+
+    @Test
+    void pmdMetrics_arePopulated() {
+        // PMD must have run and populated file_metrics
+        int count = fileMetricsDao.count();
+        System.err.println("file_metrics count: " + count);
+        assertThat(count).as("PMD must have analyzed at least one file").isGreaterThan(0);
+
+        // Main.java has one method with an if/else → cyclo >= 2, loc > 0
+        CallToolResult result = hotspotsTool.handle(Map.of("topN", 1));
+        String json = ((TextContent) result.content().getFirst()).text();
+        System.err.println("hotspot JSON: " + json);
+        assertThat(json).doesNotContain("\"linesOfCode\":0");
+        assertThat(json).doesNotContain("\"cyclomaticComplexity\":-1");
+    }
 }

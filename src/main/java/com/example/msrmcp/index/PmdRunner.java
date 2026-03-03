@@ -31,8 +31,6 @@ final class PmdRunner {
 
     /** @return number of source files analyzed */
     int analyze() {
-        MetricCollectorRule rule = new MetricCollectorRule();
-
         PMDConfiguration config = new PMDConfiguration();
         // Target Java 21 source level (broad compatibility, PMD 7 supports it well)
         LanguageVersion javaVersion = LanguageRegistry.PMD
@@ -40,21 +38,22 @@ final class PmdRunner {
                 .getVersion("21");
         config.setDefaultLanguageVersion(javaVersion);
         config.addInputPath(repoDir);
-        // Suppress verbose PMD logging via the SLF4J bridge already on classpath
-        config.setReportFormat("text");
 
+        // Reset static collector before analysis. PMD clones rule instances via
+        // reflection for each thread, so results must be stored in static maps.
+        MetricCollectorRule.reset();
         try (PmdAnalysis pmd = PmdAnalysis.create(config)) {
-            pmd.addRuleSet(RuleSet.forSingleRule(rule));
+            pmd.addRuleSet(RuleSet.forSingleRule(new MetricCollectorRule()));
             pmd.performAnalysis();
         } catch (Exception e) {
             LOG.warning("PMD analysis failed: " + e.getMessage());
             return 0;
         }
 
-        // Merge the three maps: cyclo, cognitive, loc
-        Map<String, Integer> cyclo     = rule.getMaxCycloPerFile();
-        Map<String, Integer> cognitive = rule.getMaxCognitivePerFile();
-        Map<String, Integer> loc       = rule.getLocPerFile();
+        // Read from static maps (shared across all PMD-cloned rule instances)
+        Map<String, Integer> cyclo     = MetricCollectorRule.getMaxCycloPerFile();
+        Map<String, Integer> cognitive = MetricCollectorRule.getMaxCognitivePerFile();
+        Map<String, Integer> loc       = MetricCollectorRule.getLocPerFile();
 
         Set<String> allFiles = new HashSet<>(loc.keySet());
         allFiles.addAll(cyclo.keySet());
