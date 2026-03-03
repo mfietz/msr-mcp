@@ -4,30 +4,41 @@
 
 ```
 com.example.msrmcp
-├── Main.java                    # Entrypoint: git check → DB → index → STDIO loop
+├── Main.java                    # Entrypoint: git check → DB → runIncremental → STDIO loop
 ├── db/
 │   ├── Database.java            # Jdbi setup, WAL pragma, DDL, ConstructorMapper registration
-│   ├── CommitDao.java           # INSERT OR IGNORE + findLatestHash + findByHash
+│   ├── CommitDao.java           # INSERT OR IGNORE + findLatestHash + count
 │   ├── FileChangeDao.java       # insertBatch + findTopChangedFiles + findCommitHashesForFile
-│   ├── FileMetricsDao.java      # upsertBatch + findByPaths (@BindList)
-│   └── FileCouplingDao.java     # upsertBatch (ON CONFLICT) + findTopCoupled + findTopCoupledSince
+│   │                            # + findDistinctPaths (used by LocCounter.count())
+│   ├── FileMetricsDao.java      # upsertBatch + findByPaths (@BindList) + count
+│   └── FileCouplingDao.java     # upsertBatch (ON CONFLICT accumulate) + findTopCoupled
+│                                # + findTopCoupledSince (CTE-based, slower) + deleteAll
 ├── index/
-│   ├── Indexer.java             # runFull(): deleteAll coupling → GitWalker → PmdRunner
-│   ├── GitWalker.java           # RevWalk on main/master/HEAD; EmptyTreeIterator for root commits
+│   ├── Indexer.java             # runFull(): clear coupling → GitWalker → LocCounter → PmdRunner
+│   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd
+│   ├── GitWalker.java           # RevWalk on main/master/HEAD; WalkResult(commitsProcessed,changedPaths)
+│   │                            # walk(stopAtHash) uses markUninteresting for incremental boundary
+│   │                            # EmptyTreeIterator for root commits (no parent)
+│   ├── LocCounter.java          # Language-agnostic LOC counter; skips binaries via null-byte detection
+│   │                            # count() for full, count(Set<String>) for incremental
 │   └── PmdRunner.java           # PmdAnalysis + MetricCollectorRule; abs→rel path conversion
+│                                # analyze(Set<String>) for incremental (pmd.files().addFile per file)
 ├── pmd/
-│   └── MetricCollectorRule.java # AbstractJavaRule; CYCLO+COGNITIVE via MetricsUtil on ASTExecutableDeclaration
+│   └── MetricCollectorRule.java # AbstractJavaRule; static ConcurrentHashMap for results
+│                                # (PMD clones rule instances — instance maps are empty on clones)
+│                                # reset() must be called before each PmdAnalysis run
 ├── tool/
 │   ├── ToolRegistry.java        # buildSpecs() → List<SyncToolSpecification>
 │   ├── ToolSchemas.java         # McpSchema.JsonSchema definitions
-│   ├── GetHotspotsTool.java     # Also holds shared helpers: ok(), error(), intArg(), …
+│   ├── GetHotspotsTool.java     # Also holds shared helpers: ok(), error(), intArg(), longArg(), …
 │   ├── GetTemporalCouplingTool.java
 │   ├── GetFileCommitHistoryTool.java
 │   └── RefreshIndexTool.java
-├── model/                       # Java records: CommitRecord, FileChangeRecord, …
+├── model/                       # Java records: CommitRecord, FileChangeRecord, FileMetricsRecord,
+│                                # FileCouplingRecord, HotspotResult, IndexResult
 └── util/
     ├── JiraSlugExtractor.java   # regex ^([A-Z]{2,4}-\d+)
-    └── HotspotScorer.java       # min-max normalise changeFreq × cyclo (LOC fallback)
+    └── HotspotScorer.java       # min-max normalise changeFreq × cyclo (LOC fallback for non-Java)
 ```
 
 ## Build & test
@@ -36,7 +47,7 @@ com.example.msrmcp
 # compile
 mvn compile
 
-# test (acceptance tests — takes ~10 s due to PMD)
+# test (acceptance tests — takes ~5 s)
 mvn test
 
 # full fat JAR
@@ -63,33 +74,57 @@ java -jar /path/to/msr-mcp-server.jar
 - Transport: `new StdioServerTransportProvider(McpJsonDefaults.getMapper())`
 - Server builder: `.tools(List<SyncToolSpecification>)` registers all tools at once
 - `SyncToolSpecification(tool, callHandler)` — second field is `callHandler`
+- StdioServerTransportProvider starts non-daemon threads; JVM stays alive until stdin closes.
+  Do NOT call `closeGracefully()` immediately after `build()`.
 
 ### PMD 7 metric rule
 - `MetricCollectorRule extends AbstractJavaRule`
+- Constructor must call `setLanguage(LanguageRegistry.PMD.getLanguageByFullName("Java"))`
+  (PMD 7 removed the implicit language; omitting it silently skips all files)
 - Visits `ASTMethodDeclaration` and `ASTConstructorDeclaration`
-- Both extend `AbstractExecutableDeclaration` → implement `ASTExecutableDeclaration`
+- Both implement `ASTExecutableDeclaration`
 - `JavaMetrics.CYCLO` / `COGNITIVE_COMPLEXITY` operate on `ASTExecutableDeclaration`
 - `MetricsUtil.computeMetric(JavaMetrics.CYCLO, node)` returns `Integer` (nullable)
-- `RuleSet.forSingleRule(rule)` keeps the same rule instance (no cloning)
+- PMD clones rule instances via reflection per analysis thread → use `static ConcurrentHashMap`
+  and call `MetricCollectorRule.reset()` before each `PmdAnalysis` run
+- `RuleSet.forSingleRule(rule)` — confirmed: still clones. Static maps are the fix.
 - `ServicesResourceTransformer` in shade config is critical for PMD language providers
+- PMD metrics API (CYCLO, COGNITIVE) is Java-only. Other languages get LOC only.
+
+### Multi-language support
+- `LocCounter` handles all text files (null-byte → binary → skipped)
+- `PmdRunner` processes only `.java` files (others get `cyclomaticComplexity=-1`)
+- `HotspotScorer` falls back to normalized LOC when cyclo is -1
+- `get_hotspots` default extension is `""` (matches all files, not just `.java`)
+
+### Incremental indexing
+- `Indexer.runIncremental()` calls `commitDao.findLatestHash()` to find the boundary
+- `GitWalker.walk(stopAtHash)` uses `revWalk.markUninteresting()` to skip already-indexed commits
+- `WalkResult(commitsProcessed, changedPaths)` carries the set of touched paths back
+- `LocCounter.count(Set<String>)` and `PmdRunner.analyze(Set<String>)` accept specific paths
+- Coupling: `upsertBatch` accumulates with `ON CONFLICT DO UPDATE SET co_changes += excluded.co_changes`
+  so no `deleteAll()` needed for incremental runs (coupling data accumulates correctly)
+- Falls back to `runFull()` when DB is empty
 
 ### Git indexing
 - Default branch: `refs/heads/main` → `refs/heads/master` → `HEAD`
-- Root commit (no parent): `EmptyTreeIterator` as old-tree side of DiffFormatter.scan()
+- Root commit (no parent): `EmptyTreeIterator` as old-tree side of `DiffFormatter.scan()`
 - Batch size: 500 commits flushed at once
-- co-change map: key `"fileA\0fileB"` (fileA < fileB lexicographic)
+- co-change map key: `"fileA\0fileB"` (fileA < fileB lexicographic)
+- Coupling ratio formula: `co_changes / MIN(total_changes_a, total_changes_b)`
 
 ### Temporal coupling `since` routing
 - No `sinceEpochMs`: fast path via pre-aggregated `file_coupling` table
 - With `sinceEpochMs`: CTE-based self-join on `file_changes` (correct but slower)
-- README documents the trade-off
 
-## Known risks
+## Known risks / fixed bugs
 
 | Risk | Status |
 |---|---|
-| PMD fat JAR ServiceLoader | Mitigated by `ServicesResourceTransformer` — verify with `jar tf … | grep services` |
+| PMD fat JAR ServiceLoader | Mitigated by `ServicesResourceTransformer` |
 | JGit root commit NPE | Fixed: `EmptyTreeIterator` for parent-less commits |
 | Java 25 + sqlite-jdbc native access | `Enable-Native-Access: ALL-UNNAMED` in MANIFEST |
-| `@BindList` empty list | SQLite `IN ()` is invalid — callers guard with `if (paths.isEmpty()) return Map.of()` |
-| PMD rule instance cloning | `RuleSet.forSingleRule()` preserves identity in single-analysis runs |
+| `@BindList` empty list | SQLite `IN ()` is invalid — callers guard with `if (paths.isEmpty()) return …` |
+| PMD rule cloning | Fixed: `static ConcurrentHashMap` + `reset()` before each run |
+| PMD "Rule has no language" | Fixed: explicit `setLanguage()` in `MetricCollectorRule` constructor |
+| Server exits immediately | Fixed: removed `closeGracefully()` call after `build()` |
