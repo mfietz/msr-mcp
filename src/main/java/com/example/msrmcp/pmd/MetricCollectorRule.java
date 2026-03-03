@@ -53,26 +53,27 @@ public final class MetricCollectorRule extends AbstractJavaRule {
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
-    private void collectCallable(JavaCallable node) {
-        String file = fileOf(((JavaNode) node).getRoot());
+    /**
+     * Both ASTMethodDeclaration and ASTConstructorDeclaration extend
+     * AbstractExecutableDeclaration which implements ASTExecutableDeclaration,
+     * which is what JavaMetrics.CYCLO / COGNITIVE_COMPLEXITY operate on.
+     */
+    private void collectCallable(ASTExecutableDeclaration node) {
+        String file = fileOf(node.getRoot());
         try {
-            double cyclo = MetricsUtil.computeMetric(JavaMetrics.CYCLO, node);
-            maxCycloPerFile.merge(file, (int) cyclo, Math::max);
+            Integer cyclo = MetricsUtil.computeMetric(JavaMetrics.CYCLO, node);
+            if (cyclo != null) maxCycloPerFile.merge(file, cyclo, Math::max);
         } catch (Exception ignored) {
-            // -1 sentinel retained via merge default
+            // -1 sentinel retained by absence from the map
         }
         try {
-            double cog = MetricsUtil.computeMetric(JavaMetrics.COGNITIVE_COMPLEXITY, node);
-            maxCognitivePerFile.merge(file, (int) cog, Math::max);
+            Integer cog = MetricsUtil.computeMetric(JavaMetrics.COGNITIVE_COMPLEXITY, node);
+            if (cog != null) maxCognitivePerFile.merge(file, cog, Math::max);
         } catch (Exception ignored) {}
     }
 
     private static String fileOf(ASTCompilationUnit root) {
         return root.getTextDocument().getFileId().getAbsolutePath();
-    }
-
-    private static ASTCompilationUnit compilationUnitOf(JavaNode node) {
-        return node.getRoot();
     }
 
     public Map<String, Integer> getMaxCycloPerFile() {

@@ -67,7 +67,7 @@ public final class TestRepoBuilder {
                 Files.writeString(filePath, entry.getValue());
                 git.add().addFilepattern(entry.getKey()).call();
             }
-            PersonIdent timed = new PersonIdent(author, spec.when().toEpochMilli());
+            PersonIdent timed = new PersonIdent(author, spec.when());
             git.commit()
                     .setMessage(spec.message())
                     .setAuthor(timed)

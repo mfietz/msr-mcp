@@ -1,6 +1,7 @@
 package com.example.msrmcp.db;
 
 import com.example.msrmcp.model.CommitRecord;
+import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
@@ -25,6 +26,9 @@ public interface CommitDao {
 
     @SqlQuery("SELECT hash FROM commits ORDER BY author_date DESC LIMIT 1")
     Optional<String> findLatestHash();
+
+    @SqlQuery("SELECT hash, author_date, first_line, jira_slug FROM commits WHERE hash = :hash")
+    Optional<CommitRecord> findByHash(@Bind("hash") String hash);
 
     @SqlQuery("SELECT COUNT(*) FROM commits")
     int count();
