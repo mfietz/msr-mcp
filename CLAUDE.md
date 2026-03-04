@@ -14,7 +14,7 @@ com.example.msrmcp
 │   │                            # + findDistinctPaths (used by LocCounter.count())
 │   ├── FileMetricsDao.java      # upsertBatch(FileMetricsIdRecord) + findByPaths JOIN files + count
 │   └── FileCouplingDao.java     # upsertBatch(FileCouplingIdRecord, ON CONFLICT accumulate)
-│                                # + findTopCoupled/Since/ForFile JOIN files + deleteAll
+│                                # + findTopCoupled/Since/ForFile/ForFileSince JOIN files + deleteAll
 ├── index/
 │   ├── Indexer.java             # runFull(): clear coupling → GitWalker → LocCounter → PmdRunner
 │   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd
@@ -37,10 +37,12 @@ com.example.msrmcp
 │   ├── ToolSchemas.java         # McpSchema.JsonSchema definitions
 │   ├── GetHotspotsTool.java     # Also holds shared helpers: ok(), error(), intArg(), longArg(), …
 │   ├── GetTemporalCouplingTool.java
-│   ├── GetFileCommitHistoryTool.java
+│   ├── GetFileCommitHistoryTool.java  # jiraSlug filter via LIKE on commits.jira_slug
+│   ├── GetFileAuthorsTool.java        # authors ranked by commit count; uses CommitDao.findAuthorsForFile
+│   ├── GetBusFactorTool.java          # dominanceRatio = top author commits / total; CommitDao.findBusFactorFiles
 │   └── RefreshIndexTool.java
-├── model/                       # Java records: CommitRecord, FileChangeRecord, FileMetricsRecord,
-│                                # FileCouplingRecord, HotspotResult, IndexResult
+├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
+│                                # FileMetricsRecord, FileCouplingRecord, HotspotResult, IndexResult, SummaryResult
 └── util/
     ├── JiraSlugExtractor.java   # regex ^([A-Z]{2,4}-\d+)
     └── HotspotScorer.java       # min-max normalise changeFreq × cyclo (LOC fallback for non-Java)
@@ -149,3 +151,5 @@ java -jar /path/to/msr-mcp-server.jar
 | PMD rule cloning | Fixed: `static ConcurrentHashMap` + `reset()` before each run |
 | PMD "Rule has no language" | Fixed: explicit `setLanguage()` in `MetricCollectorRule` constructor |
 | Server exits immediately | Fixed: removed `closeGracefully()` call after `build()` |
+| Schema migrations (new columns) | `ALTER TABLE commits ADD COLUMN …` in try-catch in `Database.open()` — SQLite throws on duplicate column, we ignore it |
+| Kotlin complexity via PMD | Not possible — PMD 7 Kotlin module has no metrics API; Kotlin gets LOC only |
