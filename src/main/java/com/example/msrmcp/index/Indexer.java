@@ -3,7 +3,9 @@ package com.example.msrmcp.index;
 import com.example.msrmcp.db.*;
 import com.example.msrmcp.model.IndexResult;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -39,6 +41,9 @@ public final class Indexer {
             new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao).count();
             System.err.println("MSR:   running PMD analysis...");
             int files = new PmdRunner(repoDir, fileMetricsDao, fileDao).analyze();
+
+            // Remove stale metrics for files deleted or renamed out of existence
+            deleteStaleMetrics(repoDir, fileMetricsDao);
 
             long duration = System.currentTimeMillis() - start;
             return new IndexResult("ok", files, walk.commitsProcessed(), duration, null);
@@ -86,12 +91,30 @@ public final class Indexer {
             System.err.println("MSR:   running PMD analysis...");
             int files = new PmdRunner(repoDir, fileMetricsDao, fileDao).analyze(walk.changedPaths());
 
+            // Clean up metrics for any files deleted or renamed in the new commits
+            List<String> gone = walk.changedPaths().stream()
+                    .filter(p -> !Files.exists(repoDir.resolve(p)))
+                    .toList();
+            if (!gone.isEmpty()) fileMetricsDao.deleteByPaths(gone);
+
             long duration = System.currentTimeMillis() - start;
             return new IndexResult("ok", files, walk.commitsProcessed(), duration, null);
 
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - start;
             return new IndexResult("error", 0, 0, duration, e.getMessage());
+        }
+    }
+
+    private static void deleteStaleMetrics(Path repoDir, FileMetricsDao fileMetricsDao) {
+        List<String> allPaths = fileMetricsDao.findAllFilePaths();
+        List<String> stale = allPaths.stream()
+                .filter(p -> !Files.exists(repoDir.resolve(p)))
+                .toList();
+        if (stale.isEmpty()) return;
+        int chunkSize = 999;
+        for (int i = 0; i < stale.size(); i += chunkSize) {
+            fileMetricsDao.deleteByPaths(stale.subList(i, Math.min(i + chunkSize, stale.size())));
         }
     }
 }

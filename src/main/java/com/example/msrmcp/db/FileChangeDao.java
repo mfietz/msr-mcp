@@ -4,6 +4,7 @@ import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
+import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
 import java.util.List;
 
@@ -66,6 +67,9 @@ public interface FileChangeDao {
 
     @SqlQuery("SELECT COUNT(DISTINCT file_id) FROM file_changes")
     int countDistinctPaths();
+
+    @SqlUpdate("UPDATE file_changes SET file_id = :newId WHERE file_id = :oldId")
+    void updateFileId(@Bind("oldId") long oldId, @Bind("newId") long newId);
 
     @SqlQuery("""
             SELECT f.path AS file_path,

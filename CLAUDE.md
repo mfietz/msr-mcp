@@ -16,12 +16,15 @@ com.example.msrmcp
 │   └── FileCouplingDao.java     # upsertBatch(FileCouplingIdRecord, ON CONFLICT accumulate)
 │                                # + findTopCoupled/Since/ForFile/ForFileSince JOIN files + deleteAll
 ├── index/
-│   ├── Indexer.java             # runFull(): clear coupling → GitWalker → LocCounter → PmdRunner
-│   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd
+│   ├── Indexer.java             # runFull(): clear coupling → GitWalker → LocCounter → PmdRunner → deleteStaleMetrics
+│   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd + gone-path cleanup
 │   ├── GitWalker.java           # RevWalk on main/master/HEAD; WalkResult(commitsProcessed,changedPaths)
+│   │                            # RevSort.REVERSE → oldest-first walk for correct rename handling
 │   │                            # walk(stopAtHash) uses markUninteresting for incremental boundary
 │   │                            # EmptyTreeIterator for root commits (no parent)
 │   │                            # flush() resolves paths→IDs + hashes→IDs before insert
+│   │                            # applyRenameInMemory(): fixes coChanges/totalChanges maps on RENAME diff
+│   │                            # mergeRenames(): after walk, merges file_changes old→new file_id, removes old files row
 │   ├── LocCounter.java          # Language-agnostic LOC counter; skips binaries via null-byte detection
 │   │                            # count() for full, count(Set<String>) for incremental
 │   │                            # resolves paths→IDs via FileDao before upsert
@@ -133,9 +136,23 @@ java -jar /path/to/msr-mcp-server.jar
 ### Git indexing
 - Default branch: `refs/heads/main` → `refs/heads/master` → `HEAD`
 - Root commit (no parent): `EmptyTreeIterator` as old-tree side of `DiffFormatter.scan()`
+- Walk direction: **oldest-first** (`RevSort.REVERSE`) — required for correct rename handling
 - Batch size: 500 commits flushed at once
 - co-change map key: `"fileA\0fileB"` (fileA < fileB lexicographic)
 - Coupling ratio formula: `co_changes / MIN(total_changes_a, total_changes_b)`
+
+### Rename tracking
+- `setDetectRenames(true)` on `DiffFormatter` — JGit detects by content similarity (≥60%)
+- On RENAME diff entry: `applyRenameInMemory(oldPath, newPath, coChanges, totalChanges)` fixes in-memory maps so coupling data follows the new name
+- After all flushes: `mergeRenames()` applies in chronological order:
+  - If old path and new path both have a `file_id`: `UPDATE file_changes SET file_id = newId WHERE file_id = oldId` + `DELETE FROM files WHERE file_id = oldId`
+  - If only old path has a `file_id` (no post-rename commits yet): `UPDATE files SET path = newPath WHERE path = oldPath`
+- Rename chains (A→B→C) resolve correctly because pairs are processed in commit order
+
+### Deleted file cleanup
+- After `LocCounter.count()` in `runFull()`: `deleteStaleMetrics()` removes `file_metrics` rows for paths no longer on disk
+- In `runIncremental()`: checks `changedPaths` against disk; deletes metrics for gone paths
+- `file_changes` history is retained — only the current-state `file_metrics` is cleaned up
 
 ### Temporal coupling `since` routing
 - No `sinceEpochMs`: fast path via pre-aggregated `file_coupling` table
@@ -154,3 +171,5 @@ java -jar /path/to/msr-mcp-server.jar
 | Server exits immediately | Fixed: removed `closeGracefully()` call after `build()` |
 | Schema migrations (new columns) | `ALTER TABLE commits ADD COLUMN …` in try-catch in `Database.open()` — SQLite throws on duplicate column, we ignore it |
 | Kotlin complexity via PMD | Not possible — PMD 7 Kotlin module has no metrics API; Kotlin gets LOC only |
+| Rename in same flush batch | Both old+new paths get file_ids in the same batch; `mergeRenames()` post-walk fixes this |
+| Rename to existing path (edge case) | File renamed to a path that already exists: `updatePath` silently no-ops (UNIQUE conflict) — accepted limitation |
