@@ -39,12 +39,14 @@ public interface FileChangeDao {
             JOIN commits c ON c.commit_id = fc.commit_id
             WHERE fc.file_id = (SELECT file_id FROM files WHERE path = :filePath)
               AND (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
+              AND (:jiraSlug IS NULL OR c.jira_slug LIKE :jiraSlug)
             ORDER BY c.author_date DESC
             LIMIT :limit
             """)
     List<String> findCommitHashesForFile(
             @Bind("filePath") String filePath,
             @Bind("sinceEpochMs") Long sinceEpochMs,
+            @Bind("jiraSlug") String jiraSlug,
             @Bind("limit") int limit);
 
     @SqlQuery("""

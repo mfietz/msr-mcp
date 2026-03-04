@@ -79,6 +79,31 @@ class GetFileCommitHistoryAcceptanceTest {
     }
 
     @Test
+    void jiraSlugFilter_exactMatch_returnsOnlyThatCommit() {
+        String json = ((TextContent) historyTool.handle(
+                Map.of("filePath", "src/Main.java", "jiraSlug", "ABC-2")).content().getFirst()).text();
+        assertThat(json).contains("ABC-2 add method");
+        assertThat(json).doesNotContain("ABC-1");
+        assertThat(json).doesNotContain("ABC-3");
+    }
+
+    @Test
+    void jiraSlugFilter_wildcardProject_returnsAllMatches() {
+        String json = ((TextContent) historyTool.handle(
+                Map.of("filePath", "src/Main.java", "jiraSlug", "ABC-%")).content().getFirst()).text();
+        assertThat(json).contains("ABC-1");
+        assertThat(json).contains("ABC-2");
+        assertThat(json).contains("ABC-3");
+    }
+
+    @Test
+    void jiraSlugFilter_noMatch_returnsEmpty() {
+        String json = ((TextContent) historyTool.handle(
+                Map.of("filePath", "src/Main.java", "jiraSlug", "XYZ-%")).content().getFirst()).text();
+        assertThat(json).isEqualTo("[]");
+    }
+
+    @Test
     void limitParam_constrainsResults() {
         CallToolResult result = historyTool.handle(Map.of("filePath", "src/Main.java", "limit", 1));
         String json = ((TextContent) result.content().getFirst()).text();

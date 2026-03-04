@@ -44,7 +44,9 @@ final class ToolSchemas {
                 "limit", Map.of("type", "integer", "description", "Max commits (default 50)",
                         "minimum", 1, "default", 50),
                 "sinceEpochMs", Map.of("type", "integer",
-                        "description", "Only include commits after this Unix timestamp in ms")),
+                        "description", "Only include commits after this Unix timestamp in ms"),
+                "jiraSlug", Map.of("type", "string",
+                        "description", "Filter by JIRA slug; supports LIKE patterns, e.g. \"PROJ-123\" or \"PROJ-%\"")),
                 List.of("filePath"), null, null, null);
     }
 

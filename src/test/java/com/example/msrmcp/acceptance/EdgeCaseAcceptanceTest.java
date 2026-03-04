@@ -57,7 +57,7 @@ class EdgeCaseAcceptanceTest {
             assertThat(commitDao.count()).isEqualTo(2);
 
             // File must appear in change history (both ADD and DELETE commits)
-            List<String> hashes = fileChangeDao.findCommitHashesForFile("src/Temp.java", null, 10);
+            List<String> hashes = fileChangeDao.findCommitHashesForFile("src/Temp.java", null, null, 10);
             assertThat(hashes).isNotEmpty();
 
             // File must NOT appear in file_metrics (no longer on disk)
@@ -101,7 +101,7 @@ class EdgeCaseAcceptanceTest {
             assertThat(result.status()).isEqualTo("ok");
 
             // Binary file IS tracked in change history
-            assertThat(fileChangeDao.findCommitHashesForFile("assets/logo.bin", null, 10))
+            assertThat(fileChangeDao.findCommitHashesForFile("assets/logo.bin", null, null, 10))
                     .isNotEmpty();
 
             // Binary file is NOT in file_metrics

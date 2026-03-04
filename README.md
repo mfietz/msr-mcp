@@ -197,6 +197,7 @@ Returns the files most frequently changed together with the given file:
 filePath      string  (required) Repo-relative path, e.g. "src/Main.java"
 limit         int     Max commits (default 50)
 sinceEpochMs  long    Only include commits after this timestamp (ms)
+jiraSlug      string  Filter by JIRA slug; supports LIKE patterns, e.g. "PROJ-123" or "PROJ-%"
 ```
 
 ### `refresh_index`

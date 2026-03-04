@@ -41,10 +41,11 @@ public final class GetFileCommitHistoryTool {
             if (filePath == null || filePath.isBlank()) {
                 return error("filePath is required");
             }
-            int  limit        = intArg(args, "limit", 50);
-            Long sinceEpochMs = longArg(args, "sinceEpochMs");
+            int    limit       = intArg(args, "limit", 50);
+            Long sinceEpochMs  = longArg(args, "sinceEpochMs");
+            String jiraSlug    = stringArg(args, "jiraSlug", null);
 
-            List<String> hashes = fileChangeDao.findCommitHashesForFile(filePath, sinceEpochMs, limit);
+            List<String> hashes = fileChangeDao.findCommitHashesForFile(filePath, sinceEpochMs, jiraSlug, limit);
 
             List<Map<String, Object>> result = new ArrayList<>(hashes.size());
             for (String hash : hashes) {
