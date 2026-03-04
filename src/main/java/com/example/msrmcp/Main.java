@@ -72,8 +72,9 @@ public final class Main {
                         (frequently-changed complex files), temporal coupling (files that \
                         change together), file-level coupling partners, commit history with \
                         JIRA slug filtering, repo summary, knowledge-owner analysis \
-                        (authors ranked by commit count per file), and bus-factor detection \
-                        (files dominated by a single author). All data comes from the indexed \
+                        (authors ranked by commit count per file), bus-factor detection \
+                        (files dominated by a single author), and churn analysis \
+                        (files ranked by total lines added + deleted). All data comes from the indexed \
                         local git history — no network calls are made.""")
                 .capabilities(ServerCapabilities.builder()
                         .tools(false)   // enable tools; false = no list-changed notifications

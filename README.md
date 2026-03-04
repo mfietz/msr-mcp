@@ -18,6 +18,7 @@ Analyses your git history and exposes four MCP tools that any MCP-compatible AI 
 | `get_file_commit_history` | Commit history for one file with JIRA slug extraction and filter |
 | `get_file_authors` | Authors ranked by commit count for a specific file (knowledge owners) |
 | `get_bus_factor` | Files where one author dominates commits (knowledge silos) |
+| `get_churn` | Top files ranked by total lines added + deleted |
 | `refresh_index` | Rebuild the full `.msr/` index from scratch |
 
 Only the **default branch** (`main` → `master` → `HEAD`) is indexed.
@@ -230,6 +231,29 @@ Returns files where one author made ≥ `threshold` of all commits, sorted by `d
     "topAuthorCommits": 38,
     "totalCommits": 41,
     "dominanceRatio": 0.93
+  }
+]
+```
+
+### `get_churn`
+
+```
+topN          int     Max results (default 20)
+sinceEpochMs  long    Only include commits after this timestamp (ms)
+extension     string  File extension filter, e.g. ".java". Default: all files
+pathFilter    string  SQL LIKE path pattern, e.g. "src/service/%". Default: all paths
+```
+
+Returns files sorted by total churn (lines added + lines deleted) descending:
+
+```json
+[
+  {
+    "filePath": "src/main/java/com/example/Foo.java",
+    "linesAdded": 840,
+    "linesDeleted": 310,
+    "churn": 1150,
+    "changeFrequency": 47
   }
 ]
 ```

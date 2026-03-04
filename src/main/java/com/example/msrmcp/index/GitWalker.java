@@ -11,6 +11,7 @@ import com.example.msrmcp.util.JiraSlugExtractor;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.diff.Edit;
 import org.eclipse.jgit.diff.RawTextComparator;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -95,8 +96,7 @@ final class GitWalker {
             Set<String> allChangedPaths    = new HashSet<>();
 
             List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
-            // Store path strings per batch; resolve to IDs at flush time
-            List<String[]> changeBatchPairs = new ArrayList<>(BATCH_SIZE * 4);
+            List<ChangeEntry>  changeBatch  = new ArrayList<>(BATCH_SIZE * 4);
             int processed = 0;
 
             for (RevCommit commit : revWalk) {
@@ -109,9 +109,20 @@ final class GitWalker {
 
                 commitBatch.add(new CommitRecord(hash, authorDate, firstLine, jiraSlug, authorEmail, authorName));
 
-                List<String> changedPaths = getChangedPaths(repo, commit, df);
-                for (String path : changedPaths) {
-                    changeBatchPairs.add(new String[]{hash, path});
+                List<DiffEntry> diffs = getDiffs(repo, commit, df);
+                List<String> changedPaths = new ArrayList<>(diffs.size());
+                for (DiffEntry entry : diffs) {
+                    String path = entry.getChangeType() == DiffEntry.ChangeType.DELETE
+                            ? entry.getOldPath() : entry.getNewPath();
+                    int linesAdded = 0, linesDeleted = 0;
+                    try {
+                        for (Edit edit : df.toFileHeader(entry).toEditList()) {
+                            linesAdded   += edit.getEndB() - edit.getBeginB();
+                            linesDeleted += edit.getEndA() - edit.getBeginA();
+                        }
+                    } catch (Exception ignored) {}
+                    changeBatch.add(new ChangeEntry(hash, path, linesAdded, linesDeleted));
+                    changedPaths.add(path);
                     totalChanges.computeIfAbsent(path, k -> new int[1])[0]++;
                     allChangedPaths.add(path);
                 }
@@ -122,13 +133,13 @@ final class GitWalker {
 
                 processed++;
                 if (processed % BATCH_SIZE == 0) {
-                    flush(commitBatch, changeBatchPairs);
+                    flush(commitBatch, changeBatch);
                     System.err.printf("MSR:   %,d commits processed...%n", processed);
                 }
             }
 
             if (!commitBatch.isEmpty()) {
-                flush(commitBatch, changeBatchPairs);
+                flush(commitBatch, changeBatch);
             }
 
             df.close();
@@ -145,28 +156,19 @@ final class GitWalker {
         return id;
     }
 
-    private static List<String> getChangedPaths(Repository repo, RevCommit commit,
-                                                  DiffFormatter df) throws IOException {
-        List<DiffEntry> diffs;
+    private static List<DiffEntry> getDiffs(Repository repo, RevCommit commit,
+                                             DiffFormatter df) throws IOException {
         if (commit.getParentCount() == 0) {
             try (ObjectReader reader = repo.newObjectReader()) {
                 CanonicalTreeParser newTree = new CanonicalTreeParser();
                 newTree.reset(reader, commit.getTree().getId());
-                diffs = df.scan(new EmptyTreeIterator(), newTree);
-            }
-        } else {
-            diffs = df.scan(commit.getParent(0).getTree(), commit.getTree());
-        }
-
-        List<String> paths = new ArrayList<>(diffs.size());
-        for (DiffEntry entry : diffs) {
-            switch (entry.getChangeType()) {
-                case DELETE -> paths.add(entry.getOldPath());
-                default     -> paths.add(entry.getNewPath());
+                return df.scan(new EmptyTreeIterator(), newTree);
             }
         }
-        return paths;
+        return df.scan(commit.getParent(0).getTree(), commit.getTree());
     }
+
+    private record ChangeEntry(String hash, String path, int linesAdded, int linesDeleted) {}
 
     private static void accumulateCoChanges(List<String> paths, Map<String, int[]> coChanges) {
         int n = paths.size();
@@ -180,25 +182,26 @@ final class GitWalker {
         }
     }
 
-    private void flush(List<CommitRecord> commitBatch, List<String[]> changeBatchPairs) {
+    private void flush(List<CommitRecord> commitBatch, List<ChangeEntry> changeBatch) {
         if (!commitBatch.isEmpty()) commitDao.insertBatch(commitBatch);
-        if (!changeBatchPairs.isEmpty()) {
+        if (!changeBatch.isEmpty()) {
             // Resolve commit hashes → IDs
             Map<String, Long> hashToId = resolveHashes(
-                    changeBatchPairs.stream().map(p -> p[0]).distinct().toList());
+                    changeBatch.stream().map(ChangeEntry::hash).distinct().toList());
 
             // Resolve file paths → IDs
             Map<String, Long> pathToId = resolvePaths(
-                    changeBatchPairs.stream().map(p -> p[1]).distinct().toList());
+                    changeBatch.stream().map(ChangeEntry::path).distinct().toList());
 
-            List<FileChangeIdRecord> idRecords = new ArrayList<>(changeBatchPairs.size());
-            for (String[] pair : changeBatchPairs) {
-                idRecords.add(new FileChangeIdRecord(hashToId.get(pair[0]), pathToId.get(pair[1])));
+            List<FileChangeIdRecord> idRecords = new ArrayList<>(changeBatch.size());
+            for (ChangeEntry e : changeBatch) {
+                idRecords.add(new FileChangeIdRecord(hashToId.get(e.hash()), pathToId.get(e.path()),
+                        e.linesAdded(), e.linesDeleted()));
             }
             fileChangeDao.insertBatch(idRecords);
         }
         commitBatch.clear();
-        changeBatchPairs.clear();
+        changeBatch.clear();
     }
 
     private void flushCoupling(Map<String, int[]> coChanges, Map<String, int[]> totalChanges) {
