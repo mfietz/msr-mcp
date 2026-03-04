@@ -101,6 +101,15 @@ public final class TestRepoBuilder {
         }
     }
 
+    /** Commits a deletion of an existing tracked file. */
+    public static void appendDeletion(Path repoDir, String message, String filePath) throws Exception {
+        try (Git git = Git.open(repoDir.toFile())) {
+            git.rm().addFilepattern(filePath).call();
+            PersonIdent author = new PersonIdent("Test Author", "test@example.com");
+            git.commit().setMessage(message).setAuthor(author).setCommitter(author).call();
+        }
+    }
+
     /** Recursively delete a directory (for @AfterAll cleanup). */
     public static void deleteRecursively(Path dir) throws IOException {
         if (dir == null || !Files.exists(dir)) return;

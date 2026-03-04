@@ -88,4 +88,18 @@ class RenameTrackingAcceptanceTest {
         assertThat(bRow).isNotNull();
         assertThat(bRow.changeFrequency()).isGreaterThanOrEqualTo(2);
     }
+
+    // Gap #3: churn (lines_added/deleted) follows the rename
+    @Test
+    void renamedFile_churnIncludesPreRenameCommits() {
+        List<FileChangeDao.ChurnRow> rows = fileChangeDao.findTopChurn(null, "%", "%", 10);
+        // B.java must appear with lines_added accumulated from before the rename
+        FileChangeDao.ChurnRow bRow = rows.stream()
+                .filter(r -> r.filePath().equals("src/B.java"))
+                .findFirst().orElse(null);
+        assertThat(bRow).isNotNull();
+        assertThat(bRow.linesAdded()).isGreaterThan(0);
+        // A.java must no longer appear
+        assertThat(rows.stream().anyMatch(r -> r.filePath().equals("src/A.java"))).isFalse();
+    }
 }
