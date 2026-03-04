@@ -68,11 +68,13 @@ public final class Main {
                 .serverInfo("msr-mcp", VERSION)
                 .instructions("""
                         Mining Software Repository server. Analyses the git history of the \
-                        current repository and exposes tools for identifying hotspots \
+                        current repository and exposes tools for: identifying hotspots \
                         (frequently-changed complex files), temporal coupling (files that \
-                        change together), file-level coupling partners, commit history, \
-                        and a repo summary. All data comes from the indexed local git history — \
-                        no network calls are made.""")
+                        change together), file-level coupling partners, commit history with \
+                        JIRA slug filtering, repo summary, knowledge-owner analysis \
+                        (authors ranked by commit count per file), and bus-factor detection \
+                        (files dominated by a single author). All data comes from the indexed \
+                        local git history — no network calls are made.""")
                 .capabilities(ServerCapabilities.builder()
                         .tools(false)   // enable tools; false = no list-changed notifications
                         .build())
