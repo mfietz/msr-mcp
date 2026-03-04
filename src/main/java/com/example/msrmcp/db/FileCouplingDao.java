@@ -79,6 +79,28 @@ public interface FileCouplingDao {
             @Bind("minCoupling") double minCoupling,
             @Bind("topN") int topN);
 
+    /**
+     * Returns the top-N files most coupled to {@code filePath}, regardless of
+     * whether the file is stored as file_a or file_b.
+     */
+    @SqlQuery("""
+            SELECT
+              CASE WHEN file_a = :filePath THEN file_b ELSE file_a END AS partner_path,
+              co_changes,
+              CASE WHEN file_a = :filePath THEN total_changes_a ELSE total_changes_b END AS target_total_changes,
+              CASE WHEN file_a = :filePath THEN total_changes_b ELSE total_changes_a END AS partner_total_changes,
+              CAST(co_changes AS REAL) / MIN(total_changes_a, total_changes_b) AS coupling_ratio
+            FROM file_coupling
+            WHERE (file_a = :filePath OR file_b = :filePath)
+              AND CAST(co_changes AS REAL) / MIN(total_changes_a, total_changes_b) >= :minCoupling
+            ORDER BY coupling_ratio DESC
+            LIMIT :topN
+            """)
+    List<PartnerRow> findTopCoupledForFile(
+            @Bind("filePath") String filePath,
+            @Bind("minCoupling") double minCoupling,
+            @Bind("topN") int topN);
+
     @SqlUpdate("DELETE FROM file_coupling")
     void deleteAll();
 
@@ -88,5 +110,12 @@ public interface FileCouplingDao {
             int coChanges,
             int totalChangesA,
             int totalChangesB,
+            double couplingRatio) {}
+
+    record PartnerRow(
+            String partnerPath,
+            int coChanges,
+            int targetTotalChanges,
+            int partnerTotalChanges,
             double couplingRatio) {}
 }

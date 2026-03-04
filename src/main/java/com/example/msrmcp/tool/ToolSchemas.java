@@ -44,6 +44,16 @@ final class ToolSchemas {
                 List.of("filePath"), null, null, null);
     }
 
+    static JsonSchema fileCoupling() {
+        return new JsonSchema("object", Map.of(
+                "filePath", Map.of("type", "string",
+                        "description", "Repo-relative file path, e.g. \"src/Main.java\""),
+                "topN", Map.of("type", "integer", "description", "Max partner files (default 10)"),
+                "minCoupling", Map.of("type", "number",
+                        "description", "Minimum coupling ratio 0–1 (default 0.1)")),
+                List.of("filePath"), null, null, null);
+    }
+
     static JsonSchema empty() {
         return new JsonSchema("object", Map.of(), List.of(), null, null, null);
     }

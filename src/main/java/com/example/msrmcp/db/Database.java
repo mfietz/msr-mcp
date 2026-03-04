@@ -68,6 +68,7 @@ public final class Database {
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeDao.FileChangeFrequencyRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.CouplingRow.class));
+        jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.PartnerRow.class));
 
         // WAL mode for better concurrent read performance
         jdbi.useHandle(h -> h.execute("PRAGMA journal_mode=WAL"));
