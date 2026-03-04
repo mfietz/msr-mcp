@@ -63,8 +63,9 @@ final class GitWalker {
      */
     WalkResult walk(String stopAtHash) throws IOException {
         try (Git git = Git.open(repoDir.toFile());
-             Repository repo = git.getRepository();
-             RevWalk revWalk = new RevWalk(repo)) {
+             RevWalk revWalk = new RevWalk(git.getRepository())) {
+
+            Repository repo = git.getRepository();
 
             ObjectId headId = resolveDefaultBranch(repo);
             if (headId == null) return new WalkResult(0, Set.of());
