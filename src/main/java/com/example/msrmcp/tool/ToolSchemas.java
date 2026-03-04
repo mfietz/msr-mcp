@@ -64,6 +64,20 @@ final class ToolSchemas {
                 List.of("filePath"), null, null, null);
     }
 
+    static JsonSchema busFactor() {
+        return new JsonSchema("object", Map.of(
+                "topN", Map.of("type", "integer", "description", "Max results (default 20)",
+                        "minimum", 1, "default", 20),
+                "threshold", Map.of("type", "number",
+                        "description", "Min dominance ratio 0–1 (default 0.75 = one author did ≥75% of commits)",
+                        "minimum", 0.0, "maximum", 1.0, "default", 0.75),
+                "pathFilter", Map.of("type", "string",
+                        "description", "SQL LIKE path pattern, e.g. \"src/service/%\""),
+                "sinceEpochMs", Map.of("type", "integer",
+                        "description", "Only include commits after this Unix timestamp in ms")),
+                List.of(), null, null, null);
+    }
+
     static JsonSchema fileAuthors() {
         return new JsonSchema("object", Map.of(
                 "filePath", Map.of("type", "string",

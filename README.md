@@ -17,6 +17,7 @@ Analyses your git history and exposes four MCP tools that any MCP-compatible AI 
 | `get_file_coupling` | Coupling partners for a specific file |
 | `get_file_commit_history` | Commit history for one file with JIRA slug extraction and filter |
 | `get_file_authors` | Authors ranked by commit count for a specific file (knowledge owners) |
+| `get_bus_factor` | Files where one author dominates commits (knowledge silos) |
 | `refresh_index` | Rebuild the full `.msr/` index from scratch |
 
 Only the **default branch** (`main` → `master` → `HEAD`) is indexed.
@@ -206,6 +207,30 @@ Returns authors ranked by commit count for the given file:
 [
   { "authorEmail": "alice@example.com", "authorName": "Alice", "commitCount": 42 },
   { "authorEmail": "bob@example.com",   "authorName": "Bob",   "commitCount":  7 }
+]
+```
+
+### `get_bus_factor`
+
+```
+topN          int     Max results (default 20)
+threshold     double  Min dominance ratio 0–1 (default 0.75)
+pathFilter    string  SQL LIKE path pattern, e.g. "src/service/%"
+sinceEpochMs  long    Only include commits after this timestamp (ms)
+```
+
+Returns files where one author made ≥ `threshold` of all commits, sorted by `dominanceRatio` descending:
+
+```json
+[
+  {
+    "filePath": "src/core/Engine.java",
+    "topAuthorEmail": "alice@example.com",
+    "topAuthorName": "Alice",
+    "topAuthorCommits": 38,
+    "totalCommits": 41,
+    "dominanceRatio": 0.93
+  }
 ]
 ```
 

@@ -58,7 +58,47 @@ public interface CommitDao {
             @Bind("sinceEpochMs") Long sinceEpochMs,
             @Bind("topN") int topN);
 
+    @SqlQuery("""
+            WITH file_author_counts AS (
+              SELECT fc.file_id, c.author_email, c.author_name, COUNT(*) AS author_commits
+              FROM file_changes fc
+              JOIN commits c ON c.commit_id = fc.commit_id
+              WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
+              GROUP BY fc.file_id, c.author_email
+            ),
+            file_totals AS (
+              SELECT file_id,
+                     SUM(author_commits) AS total_commits,
+                     MAX(author_commits) AS max_author_commits
+              FROM file_author_counts
+              GROUP BY file_id
+            )
+            SELECT
+              f.path AS file_path,
+              fac.author_email AS top_author_email,
+              fac.author_name  AS top_author_name,
+              fac.author_commits AS top_author_commits,
+              ft.total_commits,
+              CAST(fac.author_commits AS REAL) / ft.total_commits AS dominance_ratio
+            FROM file_totals ft
+            JOIN file_author_counts fac ON fac.file_id = ft.file_id
+                                       AND fac.author_commits = ft.max_author_commits
+            JOIN files f ON f.file_id = ft.file_id
+            WHERE CAST(ft.max_author_commits AS REAL) / ft.total_commits >= :threshold
+              AND (:pathFilter IS NULL OR f.path LIKE :pathFilter)
+            ORDER BY dominance_ratio DESC
+            LIMIT :topN
+            """)
+    List<BusFactorRow> findBusFactorFiles(
+            @Bind("sinceEpochMs") Long sinceEpochMs,
+            @Bind("threshold") double threshold,
+            @Bind("pathFilter") String pathFilter,
+            @Bind("topN") int topN);
+
     record CommitIdRecord(long commitId, String hash) {}
 
     record AuthorRow(String authorEmail, String authorName, int commitCount) {}
+
+    record BusFactorRow(String filePath, String topAuthorEmail, String topAuthorName,
+                        int topAuthorCommits, int totalCommits, double dominanceRatio) {}
 }

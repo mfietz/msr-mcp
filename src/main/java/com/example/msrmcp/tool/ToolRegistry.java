@@ -32,6 +32,7 @@ public final class ToolRegistry {
         GetSummaryTool summary = new GetSummaryTool(commitDao, fileChangeDao, fileMetricsDao);
         GetFileCouplingTool fileCoupling = new GetFileCouplingTool(fileCouplingDao);
         GetFileAuthorsTool fileAuthors = new GetFileAuthorsTool(commitDao);
+        GetBusFactorTool busFactor = new GetBusFactorTool(commitDao);
 
         return List.of(
                 new McpServerFeatures.SyncToolSpecification(
@@ -60,7 +61,11 @@ public final class ToolRegistry {
 
                 new McpServerFeatures.SyncToolSpecification(
                         GetFileAuthorsTool.toolSpec(),
-                        (exchange, req) -> fileAuthors.handle(req.arguments()))
+                        (exchange, req) -> fileAuthors.handle(req.arguments())),
+
+                new McpServerFeatures.SyncToolSpecification(
+                        GetBusFactorTool.toolSpec(),
+                        (exchange, req) -> busFactor.handle(req.arguments()))
         );
     }
 }
