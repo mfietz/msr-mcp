@@ -20,6 +20,10 @@ Analyses your git history and exposes four MCP tools that any MCP-compatible AI 
 
 Only the **default branch** (`main` → `master` → `HEAD`) is indexed.
 
+### Language support
+
+Full metrics (change frequency, LOC, cyclomatic & cognitive complexity) are available for **Java** only — PMD drives the complexity analysis. All other text-based languages (TypeScript, Go, Python, …) get change frequency and LOC; binary files are skipped entirely.
+
 ---
 
 ## Prerequisites
