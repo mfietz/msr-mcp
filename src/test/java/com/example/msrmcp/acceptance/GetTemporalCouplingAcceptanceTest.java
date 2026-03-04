@@ -66,6 +66,9 @@ class GetTemporalCouplingAcceptanceTest {
         // A.java and B.java should both appear in the first coupling pair
         assertThat(json).contains("A.java");
         assertThat(json).contains("B.java");
+        // A-B co-changed in all 3 commits → coChanges=3, ratio=1.0
+        assertThat(json).contains("\"coChanges\":3");
+        assertThat(json).contains("\"couplingRatio\":1.0");
 
         // A-B pair should appear before A-C or B-C
         int abIdx = Math.min(json.indexOf("A.java"), json.indexOf("B.java"));
@@ -78,11 +81,13 @@ class GetTemporalCouplingAcceptanceTest {
     @Test
     void withSinceFilter_dynamicQueryIsUsed() {
         // Using a since timestamp forces the dynamic (file_changes-based) query
-        long since = System.currentTimeMillis() - (365L * 24 * 3600 * 1000);
+        // Use epoch 0 so all test commits are included
         CallToolResult result = couplingTool.handle(Map.of("topN", 5, "minCoupling", 0.1,
-                "sinceEpochMs", since));
+                "sinceEpochMs", 0));
         assertThat(result.isError()).isFalse();
-        // Result may be empty (old test commits) but must not throw
+        String json = ((TextContent) result.content().getFirst()).text();
+        assertThat(json).contains("A.java");
+        assertThat(json).contains("B.java");
     }
 
 }

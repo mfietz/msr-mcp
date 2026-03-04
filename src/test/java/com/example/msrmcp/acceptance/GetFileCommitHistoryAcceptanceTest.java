@@ -59,6 +59,8 @@ class GetFileCommitHistoryAcceptanceTest {
         assertThat(json).contains("ABC-1 initial commit");
         assertThat(json).contains("ABC-2 add method");
         assertThat(json).contains("ABC-3 refactor");
+        // Each commit changed exactly src/Main.java
+        assertThat(json).contains("\"filesChanged\":[\"src/Main.java\"]");
     }
 
     @Test

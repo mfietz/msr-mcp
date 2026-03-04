@@ -77,10 +77,10 @@ class GetFileCouplingAcceptanceTest {
     void queryA_partnerRow_hasExpectedFields() {
         String json = text(tool.handle(Map.of("filePath", "src/A.java", "topN", 1, "minCoupling", 0.9)));
         assertThat(json).contains("\"partnerPath\"");
-        assertThat(json).contains("\"coChanges\"");
-        assertThat(json).contains("\"couplingRatio\"");
-        assertThat(json).contains("\"targetTotalChanges\"");
-        assertThat(json).contains("\"partnerTotalChanges\"");
+        assertThat(json).contains("\"coChanges\":3");
+        assertThat(json).contains("\"couplingRatio\":1.0");
+        assertThat(json).contains("\"targetTotalChanges\":3");
+        assertThat(json).contains("\"partnerTotalChanges\":3");
     }
 
     @Test

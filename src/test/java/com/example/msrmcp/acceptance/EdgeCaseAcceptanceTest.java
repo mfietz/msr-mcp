@@ -153,6 +153,7 @@ class EdgeCaseAcceptanceTest {
                     Map.of("topN", 10, "minCoupling", 0.5)).content().getFirst()).text();
             assertThat(json).contains("C.java");
             assertThat(json).contains("D.java");
+            assertThat(json).contains("\"couplingRatio\":1.0");
             assertThat(json).doesNotContain("A.java");
             assertThat(json).doesNotContain("B.java");
         } finally {
