@@ -8,21 +8,25 @@ com.example.msrmcp
 ├── db/
 │   ├── Database.java            # Jdbi setup, WAL pragma, DDL, ConstructorMapper registration
 │   ├── CommitDao.java           # INSERT OR IGNORE + findLatestHash + count
-│   ├── FileChangeDao.java       # insertBatch + findTopChangedFiles + findCommitHashesForFile
+│   ├── FileDao.java             # files lookup table: insertBatch + findByPaths → FileRecord(fileId, path)
+│   ├── FileChangeDao.java       # insertBatch(FileChangeIdRecord) + query methods JOIN files
 │   │                            # + findDistinctPaths (used by LocCounter.count())
-│   ├── FileMetricsDao.java      # upsertBatch + findByPaths (@BindList) + count
-│   └── FileCouplingDao.java     # upsertBatch (ON CONFLICT accumulate) + findTopCoupled
-│                                # + findTopCoupledSince (CTE-based, slower) + deleteAll
+│   ├── FileMetricsDao.java      # upsertBatch(FileMetricsIdRecord) + findByPaths JOIN files + count
+│   └── FileCouplingDao.java     # upsertBatch(FileCouplingIdRecord, ON CONFLICT accumulate)
+│                                # + findTopCoupled/Since/ForFile JOIN files + deleteAll
 ├── index/
 │   ├── Indexer.java             # runFull(): clear coupling → GitWalker → LocCounter → PmdRunner
 │   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd
 │   ├── GitWalker.java           # RevWalk on main/master/HEAD; WalkResult(commitsProcessed,changedPaths)
 │   │                            # walk(stopAtHash) uses markUninteresting for incremental boundary
 │   │                            # EmptyTreeIterator for root commits (no parent)
+│   │                            # flush() resolves paths→IDs via FileDao before insert
 │   ├── LocCounter.java          # Language-agnostic LOC counter; skips binaries via null-byte detection
 │   │                            # count() for full, count(Set<String>) for incremental
+│   │                            # resolves paths→IDs via FileDao before upsert
 │   └── PmdRunner.java           # PmdAnalysis + MetricCollectorRule; abs→rel path conversion
 │                                # analyze(Set<String>) for incremental (pmd.files().addFile per file)
+│                                # resolves paths→IDs via FileDao before upsert
 ├── pmd/
 │   └── MetricCollectorRule.java # AbstractJavaRule; static ConcurrentHashMap for results
 │                                # (PMD clones rule instances — instance maps are empty on clones)
@@ -105,6 +109,15 @@ java -jar /path/to/msr-mcp-server.jar
 - Coupling: `upsertBatch` accumulates with `ON CONFLICT DO UPDATE SET co_changes += excluded.co_changes`
   so no `deleteAll()` needed for incremental runs (coupling data accumulates correctly)
 - Falls back to `runFull()` when DB is empty
+
+### Path normalization (files lookup table)
+- `files(file_id INTEGER PK AUTOINCREMENT, path TEXT UNIQUE)` — central path→ID mapping
+- `file_changes`, `file_metrics`, `file_coupling` store integer `file_id` FKs instead of TEXT paths
+- DAO query methods JOIN to `files` and return string paths — tool layer unchanged
+- DAO insert methods accept ID-based records: `FileChangeIdRecord`, `FileMetricsIdRecord`, `FileCouplingIdRecord`
+- Path→ID resolution via `FileDao.insertBatch` (INSERT OR IGNORE) + `findByPaths`
+- Coupling `file_a_id < file_b_id` enforced at flush time (may differ from lexicographic path order)
+- `@BindList` chunked to 999 per call (SQLite variable limit)
 
 ### Git indexing
 - Default branch: `refs/heads/main` → `refs/heads/master` → `HEAD`

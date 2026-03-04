@@ -11,17 +11,21 @@ import java.util.List;
 public interface FileMetricsDao {
 
     @SqlBatch("""
-            INSERT OR REPLACE INTO file_metrics(file_path, loc, cyclomatic_complexity, cognitive_complexity, analyzed_at)
-            VALUES(:filePath, :loc, :cyclomaticComplexity, :cognitiveComplexity, :analyzedAt)
+            INSERT OR REPLACE INTO file_metrics(file_id, loc, cyclomatic_complexity, cognitive_complexity, analyzed_at)
+            VALUES(:fileId, :loc, :cyclomaticComplexity, :cognitiveComplexity, :analyzedAt)
             """)
-    void upsertBatch(@BindMethods List<FileMetricsRecord> metrics);
+    void upsertBatch(@BindMethods List<FileMetricsIdRecord> metrics);
 
-    /**
-     * @param filePaths use angle-bracket syntax: <filePaths>
-     */
-    @SqlQuery("SELECT file_path, loc, cyclomatic_complexity, cognitive_complexity, analyzed_at FROM file_metrics WHERE file_path IN (<filePaths>)")
+    @SqlQuery("""
+            SELECT f.path AS file_path, fm.loc, fm.cyclomatic_complexity, fm.cognitive_complexity, fm.analyzed_at
+            FROM file_metrics fm
+            JOIN files f ON f.file_id = fm.file_id
+            WHERE f.path IN (<filePaths>)
+            """)
     List<FileMetricsRecord> findByPaths(@BindList("filePaths") List<String> filePaths);
 
     @SqlQuery("SELECT COUNT(*) FROM file_metrics")
     int count();
+
+    record FileMetricsIdRecord(long fileId, int loc, int cyclomaticComplexity, int cognitiveComplexity, long analyzedAt) {}
 }

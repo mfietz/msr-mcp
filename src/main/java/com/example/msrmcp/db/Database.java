@@ -22,16 +22,21 @@ public final class Database {
             );
             CREATE INDEX IF NOT EXISTS idx_commits_author_date ON commits(author_date);
 
+            CREATE TABLE IF NOT EXISTS files (
+                file_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                path    TEXT    NOT NULL UNIQUE
+            );
+
             CREATE TABLE IF NOT EXISTS file_changes (
                 id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 commit_hash TEXT    NOT NULL REFERENCES commits(hash),
-                file_path   TEXT    NOT NULL
+                file_id     INTEGER NOT NULL REFERENCES files(file_id)
             );
             CREATE INDEX IF NOT EXISTS idx_file_changes_commit_hash ON file_changes(commit_hash);
-            CREATE INDEX IF NOT EXISTS idx_file_changes_file_path   ON file_changes(file_path);
+            CREATE INDEX IF NOT EXISTS idx_file_changes_fileid_commit ON file_changes(file_id, commit_hash);
 
             CREATE TABLE IF NOT EXISTS file_metrics (
-                file_path             TEXT    NOT NULL PRIMARY KEY,
+                file_id               INTEGER NOT NULL PRIMARY KEY REFERENCES files(file_id),
                 loc                   INTEGER NOT NULL,
                 cyclomatic_complexity INTEGER NOT NULL DEFAULT -1,
                 cognitive_complexity  INTEGER NOT NULL DEFAULT -1,
@@ -39,15 +44,15 @@ public final class Database {
             );
 
             CREATE TABLE IF NOT EXISTS file_coupling (
-                file_a          TEXT    NOT NULL,
-                file_b          TEXT    NOT NULL,
+                file_a_id       INTEGER NOT NULL REFERENCES files(file_id),
+                file_b_id       INTEGER NOT NULL REFERENCES files(file_id),
                 co_changes      INTEGER NOT NULL DEFAULT 0,
                 total_changes_a INTEGER NOT NULL DEFAULT 0,
                 total_changes_b INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (file_a, file_b)
+                PRIMARY KEY (file_a_id, file_b_id)
             );
-            CREATE INDEX IF NOT EXISTS idx_coupling_a ON file_coupling(file_a);
-            CREATE INDEX IF NOT EXISTS idx_coupling_b ON file_coupling(file_b);
+            CREATE INDEX IF NOT EXISTS idx_coupling_a ON file_coupling(file_a_id);
+            CREATE INDEX IF NOT EXISTS idx_coupling_b ON file_coupling(file_b_id);
             """;
 
     private final Jdbi jdbi;
@@ -62,6 +67,7 @@ public final class Database {
 
         // Register ConstructorMapper for all record types so JDBI can map
         // snake_case columns to camelCase record components automatically.
+        jdbi.registerRowMapper(ConstructorMapper.factory(FileDao.FileRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(CommitRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileMetricsRecord.class));

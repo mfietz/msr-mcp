@@ -1,7 +1,8 @@
 package com.example.msrmcp.index;
 
+import com.example.msrmcp.db.FileDao;
 import com.example.msrmcp.db.FileMetricsDao;
-import com.example.msrmcp.model.FileMetricsRecord;
+import com.example.msrmcp.db.FileMetricsDao.FileMetricsIdRecord;
 import com.example.msrmcp.pmd.MetricCollectorRule;
 import net.sourceforge.pmd.PMDConfiguration;
 import net.sourceforge.pmd.PmdAnalysis;
@@ -23,10 +24,12 @@ final class PmdRunner {
 
     private final Path repoDir;
     private final FileMetricsDao fileMetricsDao;
+    private final FileDao fileDao;
 
-    PmdRunner(Path repoDir, FileMetricsDao fileMetricsDao) {
+    PmdRunner(Path repoDir, FileMetricsDao fileMetricsDao, FileDao fileDao) {
         this.repoDir = repoDir;
         this.fileMetricsDao = fileMetricsDao;
+        this.fileDao = fileDao;
     }
 
     /** Analyzes all Java files in the repo directory. */
@@ -83,21 +86,48 @@ final class PmdRunner {
         allFiles.addAll(cyclo.keySet());
 
         long now = System.currentTimeMillis();
-        List<FileMetricsRecord> batch = new ArrayList<>(allFiles.size());
+        // Collect relPaths and their metrics
+        List<String> relPaths = new ArrayList<>(allFiles.size());
+        List<int[]> metricsList = new ArrayList<>(allFiles.size());
         for (String absPath : allFiles) {
             String relPath = toRelativePath(absPath);
-            batch.add(new FileMetricsRecord(
-                    relPath,
+            relPaths.add(relPath);
+            metricsList.add(new int[]{
                     loc.getOrDefault(absPath, 0),
                     cyclo.getOrDefault(absPath, -1),
-                    cognitive.getOrDefault(absPath, -1),
-                    now));
+                    cognitive.getOrDefault(absPath, -1)
+            });
         }
 
-        if (!batch.isEmpty()) {
-            fileMetricsDao.upsertBatch(batch);
+        if (!relPaths.isEmpty()) {
+            Map<String, Long> pathToId = resolvePaths(relPaths);
+            List<FileMetricsIdRecord> batch = new ArrayList<>(relPaths.size());
+            for (int i = 0; i < relPaths.size(); i++) {
+                Long id = pathToId.get(relPaths.get(i));
+                if (id != null) {
+                    int[] m = metricsList.get(i);
+                    batch.add(new FileMetricsIdRecord(id, m[0], m[1], m[2], now));
+                }
+            }
+            if (!batch.isEmpty()) {
+                fileMetricsDao.upsertBatch(batch);
+            }
         }
-        return batch.size();
+        return relPaths.size();
+    }
+
+    private Map<String, Long> resolvePaths(List<String> paths) {
+        int chunkSize = 999;
+        for (int i = 0; i < paths.size(); i += chunkSize) {
+            fileDao.insertBatch(paths.subList(i, Math.min(i + chunkSize, paths.size())));
+        }
+        Map<String, Long> result = new HashMap<>();
+        for (int i = 0; i < paths.size(); i += chunkSize) {
+            for (FileDao.FileRecord r : fileDao.findByPaths(paths.subList(i, Math.min(i + chunkSize, paths.size())))) {
+                result.put(r.path(), r.fileId());
+            }
+        }
+        return result;
     }
 
     private String toRelativePath(String absPath) {

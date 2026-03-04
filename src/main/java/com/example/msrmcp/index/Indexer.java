@@ -28,16 +28,17 @@ public final class Indexer {
         FileChangeDao   fileChangeDao   = db.attach(FileChangeDao.class);
         FileMetricsDao  fileMetricsDao  = db.attach(FileMetricsDao.class);
         FileCouplingDao fileCouplingDao = db.attach(FileCouplingDao.class);
+        FileDao         fileDao         = db.attach(FileDao.class);
 
         try {
             fileCouplingDao.deleteAll();
 
             System.err.println("MSR:   walking git history...");
-            GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao).walk();
+            GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao, fileDao).walk();
             System.err.printf("MSR:   %,d commits done. counting lines of code...%n", walk.commitsProcessed());
-            new LocCounter(repoDir, fileChangeDao, fileMetricsDao).count();
+            new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao).count();
             System.err.println("MSR:   running PMD analysis...");
-            int files = new PmdRunner(repoDir, fileMetricsDao).analyze();
+            int files = new PmdRunner(repoDir, fileMetricsDao, fileDao).analyze();
 
             long duration = System.currentTimeMillis() - start;
             return new IndexResult("ok", files, walk.commitsProcessed(), duration, null);
@@ -62,6 +63,7 @@ public final class Indexer {
         FileChangeDao   fileChangeDao   = db.attach(FileChangeDao.class);
         FileMetricsDao  fileMetricsDao  = db.attach(FileMetricsDao.class);
         FileCouplingDao fileCouplingDao = db.attach(FileCouplingDao.class);
+        FileDao         fileDao         = db.attach(FileDao.class);
 
         try {
             Optional<String> latestHash = commitDao.findLatestHash();
@@ -71,7 +73,7 @@ public final class Indexer {
             }
 
             System.err.println("MSR:   walking git history...");
-            GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao)
+            GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao, fileDao)
                     .walk(latestHash.get());
 
             if (walk.commitsProcessed() == 0) {
@@ -80,9 +82,9 @@ public final class Indexer {
             }
 
             System.err.printf("MSR:   %,d new commits. counting lines of code...%n", walk.commitsProcessed());
-            new LocCounter(repoDir, fileChangeDao, fileMetricsDao).count(walk.changedPaths());
+            new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao).count(walk.changedPaths());
             System.err.println("MSR:   running PMD analysis...");
-            int files = new PmdRunner(repoDir, fileMetricsDao).analyze(walk.changedPaths());
+            int files = new PmdRunner(repoDir, fileMetricsDao, fileDao).analyze(walk.changedPaths());
 
             long duration = System.currentTimeMillis() - start;
             return new IndexResult("ok", files, walk.commitsProcessed(), duration, null);

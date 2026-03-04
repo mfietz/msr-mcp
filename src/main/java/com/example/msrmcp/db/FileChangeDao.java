@@ -1,6 +1,5 @@
 package com.example.msrmcp.db;
 
-import com.example.msrmcp.model.FileChangeRecord;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
@@ -11,25 +10,20 @@ import java.util.List;
 public interface FileChangeDao {
 
     @SqlBatch("""
-            INSERT INTO file_changes(commit_hash, file_path)
-            VALUES(:commitHash, :filePath)
+            INSERT INTO file_changes(commit_hash, file_id)
+            VALUES(:commitHash, :fileId)
             """)
-    void insertBatch(@BindMethods List<FileChangeRecord> changes);
+    void insertBatch(@BindMethods List<FileChangeIdRecord> changes);
 
-    /**
-     * Top changed files, optionally filtered by epoch, extension, and path prefix.
-     * sinceEpochMs=null means all time.
-     * extensionPattern e.g. "%.java", "%" for all.
-     * pathFilter SQL LIKE pattern e.g. "src/service/%" or "%" for all.
-     */
     @SqlQuery("""
-            SELECT fc.file_path, COUNT(*) AS change_frequency
+            SELECT f.path AS file_path, COUNT(*) AS change_frequency
             FROM file_changes fc
+            JOIN files f ON f.file_id = fc.file_id
             JOIN commits c ON c.hash = fc.commit_hash
             WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
-              AND fc.file_path LIKE :extensionPattern
-              AND fc.file_path LIKE :pathFilter
-            GROUP BY fc.file_path
+              AND f.path LIKE :extensionPattern
+              AND f.path LIKE :pathFilter
+            GROUP BY fc.file_id
             ORDER BY change_frequency DESC
             LIMIT :topN
             """)
@@ -43,7 +37,7 @@ public interface FileChangeDao {
             SELECT fc.commit_hash
             FROM file_changes fc
             JOIN commits c ON c.hash = fc.commit_hash
-            WHERE fc.file_path = :filePath
+            WHERE fc.file_id = (SELECT file_id FROM files WHERE path = :filePath)
               AND (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
             ORDER BY c.author_date DESC
             LIMIT :limit
@@ -53,14 +47,25 @@ public interface FileChangeDao {
             @Bind("sinceEpochMs") Long sinceEpochMs,
             @Bind("limit") int limit);
 
-    @SqlQuery("SELECT file_path FROM file_changes WHERE commit_hash = :commitHash")
+    @SqlQuery("""
+            SELECT f.path
+            FROM file_changes fc
+            JOIN files f ON f.file_id = fc.file_id
+            WHERE fc.commit_hash = :commitHash
+            """)
     List<String> findPathsByCommit(@Bind("commitHash") String commitHash);
 
-    @SqlQuery("SELECT DISTINCT file_path FROM file_changes")
+    @SqlQuery("""
+            SELECT DISTINCT f.path
+            FROM file_changes fc
+            JOIN files f ON f.file_id = fc.file_id
+            """)
     List<String> findDistinctPaths();
 
-    @SqlQuery("SELECT COUNT(DISTINCT file_path) FROM file_changes")
+    @SqlQuery("SELECT COUNT(DISTINCT file_id) FROM file_changes")
     int countDistinctPaths();
+
+    record FileChangeIdRecord(String commitHash, long fileId) {}
 
     record FileChangeFrequencyRow(String filePath, int changeFrequency) {}
 }

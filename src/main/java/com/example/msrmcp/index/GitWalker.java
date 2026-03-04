@@ -1,11 +1,12 @@
 package com.example.msrmcp.index;
 
 import com.example.msrmcp.db.CommitDao;
+import com.example.msrmcp.db.FileDao;
 import com.example.msrmcp.db.FileCouplingDao;
 import com.example.msrmcp.db.FileChangeDao;
+import com.example.msrmcp.db.FileChangeDao.FileChangeIdRecord;
+import com.example.msrmcp.db.FileCouplingDao.FileCouplingIdRecord;
 import com.example.msrmcp.model.CommitRecord;
-import com.example.msrmcp.model.FileCouplingRecord;
-import com.example.msrmcp.model.FileChangeRecord;
 import com.example.msrmcp.util.JiraSlugExtractor;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.diff.DiffEntry;
@@ -37,13 +38,16 @@ final class GitWalker {
     private final CommitDao commitDao;
     private final FileChangeDao fileChangeDao;
     private final FileCouplingDao fileCouplingDao;
+    private final FileDao fileDao;
 
     GitWalker(Path repoDir, CommitDao commitDao,
-              FileChangeDao fileChangeDao, FileCouplingDao fileCouplingDao) {
+              FileChangeDao fileChangeDao, FileCouplingDao fileCouplingDao,
+              FileDao fileDao) {
         this.repoDir = repoDir;
         this.commitDao = commitDao;
         this.fileChangeDao = fileChangeDao;
         this.fileCouplingDao = fileCouplingDao;
+        this.fileDao = fileDao;
     }
 
     record WalkResult(int commitsProcessed, Set<String> changedPaths) {}
@@ -90,8 +94,9 @@ final class GitWalker {
             Map<String, int[]> totalChanges = new HashMap<>();
             Set<String> allChangedPaths    = new HashSet<>();
 
-            List<CommitRecord>     commitBatch = new ArrayList<>(BATCH_SIZE);
-            List<FileChangeRecord> changeBatch = new ArrayList<>(BATCH_SIZE * 4);
+            List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
+            // Store path strings per batch; resolve to IDs at flush time
+            List<String[]> changeBatchPairs = new ArrayList<>(BATCH_SIZE * 4);
             int processed = 0;
 
             for (RevCommit commit : revWalk) {
@@ -104,7 +109,7 @@ final class GitWalker {
 
                 List<String> changedPaths = getChangedPaths(repo, commit, df);
                 for (String path : changedPaths) {
-                    changeBatch.add(new FileChangeRecord(hash, path));
+                    changeBatchPairs.add(new String[]{hash, path});
                     totalChanges.computeIfAbsent(path, k -> new int[1])[0]++;
                     allChangedPaths.add(path);
                 }
@@ -115,13 +120,13 @@ final class GitWalker {
 
                 processed++;
                 if (processed % BATCH_SIZE == 0) {
-                    flush(commitBatch, changeBatch);
+                    flush(commitBatch, changeBatchPairs);
                     System.err.printf("MSR:   %,d commits processed...%n", processed);
                 }
             }
 
             if (!commitBatch.isEmpty()) {
-                flush(commitBatch, changeBatch);
+                flush(commitBatch, changeBatchPairs);
             }
 
             df.close();
@@ -173,28 +178,80 @@ final class GitWalker {
         }
     }
 
-    private void flush(List<CommitRecord> commitBatch, List<FileChangeRecord> changeBatch) {
+    private void flush(List<CommitRecord> commitBatch, List<String[]> changeBatchPairs) {
         if (!commitBatch.isEmpty()) commitDao.insertBatch(commitBatch);
-        if (!changeBatch.isEmpty()) fileChangeDao.insertBatch(changeBatch);
+        if (!changeBatchPairs.isEmpty()) {
+            // Collect unique paths, insert into files table, build path→id map
+            Map<String, Long> pathToId = resolvePaths(
+                    changeBatchPairs.stream().map(p -> p[1]).distinct().toList());
+
+            List<FileChangeIdRecord> idRecords = new ArrayList<>(changeBatchPairs.size());
+            for (String[] pair : changeBatchPairs) {
+                idRecords.add(new FileChangeIdRecord(pair[0], pathToId.get(pair[1])));
+            }
+            fileChangeDao.insertBatch(idRecords);
+        }
         commitBatch.clear();
-        changeBatch.clear();
+        changeBatchPairs.clear();
     }
 
     private void flushCoupling(Map<String, int[]> coChanges, Map<String, int[]> totalChanges) {
-        List<FileCouplingRecord> records = new ArrayList<>(coChanges.size());
+        if (coChanges.isEmpty()) return;
+
+        // Collect all unique paths from coupling data
+        Set<String> allPaths = new HashSet<>();
+        for (var entry : coChanges.entrySet()) {
+            String[] parts = entry.getKey().split("\0", 2);
+            allPaths.add(parts[0]);
+            allPaths.add(parts[1]);
+        }
+        Map<String, Long> pathToId = resolvePaths(new ArrayList<>(allPaths));
+
+        List<FileCouplingIdRecord> records = new ArrayList<>(coChanges.size());
         for (var entry : coChanges.entrySet()) {
             String[] parts = entry.getKey().split("\0", 2);
             String a = parts[0], b = parts[1];
             int co = entry.getValue()[0];
             int ta = totalChanges.getOrDefault(a, new int[]{0})[0];
             int tb = totalChanges.getOrDefault(b, new int[]{0})[0];
-            records.add(new FileCouplingRecord(a, b, co, ta, tb));
-        }
-        if (!records.isEmpty()) {
-            int chunkSize = 500;
-            for (int i = 0; i < records.size(); i += chunkSize) {
-                fileCouplingDao.upsertBatch(records.subList(i, Math.min(i + chunkSize, records.size())));
+
+            long idA = pathToId.get(a);
+            long idB = pathToId.get(b);
+            // Ensure fileAId < fileBId; swap totalChanges accordingly
+            if (idA > idB) {
+                records.add(new FileCouplingIdRecord(idB, idA, co, tb, ta));
+            } else {
+                records.add(new FileCouplingIdRecord(idA, idB, co, ta, tb));
             }
         }
+
+        int chunkSize = 500;
+        for (int i = 0; i < records.size(); i += chunkSize) {
+            fileCouplingDao.upsertBatch(records.subList(i, Math.min(i + chunkSize, records.size())));
+        }
+    }
+
+    /**
+     * Inserts paths into the files table (INSERT OR IGNORE) and returns
+     * a path→fileId map. Chunks into groups of 999 to respect SQLite limits.
+     */
+    private Map<String, Long> resolvePaths(List<String> paths) {
+        if (paths.isEmpty()) return Map.of();
+
+        // Insert all paths (ignores existing)
+        int chunkSize = 999;
+        for (int i = 0; i < paths.size(); i += chunkSize) {
+            fileDao.insertBatch(paths.subList(i, Math.min(i + chunkSize, paths.size())));
+        }
+
+        // Fetch IDs
+        Map<String, Long> result = new HashMap<>();
+        for (int i = 0; i < paths.size(); i += chunkSize) {
+            List<String> chunk = paths.subList(i, Math.min(i + chunkSize, paths.size()));
+            for (FileDao.FileRecord r : fileDao.findByPaths(chunk)) {
+                result.put(r.path(), r.fileId());
+            }
+        }
+        return result;
     }
 }

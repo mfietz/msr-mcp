@@ -1,16 +1,14 @@
 package com.example.msrmcp.index;
 
 import com.example.msrmcp.db.FileChangeDao;
+import com.example.msrmcp.db.FileDao;
 import com.example.msrmcp.db.FileMetricsDao;
-import com.example.msrmcp.model.FileMetricsRecord;
+import com.example.msrmcp.db.FileMetricsDao.FileMetricsIdRecord;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Logger;
 
 /**
@@ -28,11 +26,13 @@ final class LocCounter {
     private final Path repoDir;
     private final FileChangeDao fileChangeDao;
     private final FileMetricsDao fileMetricsDao;
+    private final FileDao fileDao;
 
-    LocCounter(Path repoDir, FileChangeDao fileChangeDao, FileMetricsDao fileMetricsDao) {
+    LocCounter(Path repoDir, FileChangeDao fileChangeDao, FileMetricsDao fileMetricsDao, FileDao fileDao) {
         this.repoDir = repoDir;
         this.fileChangeDao = fileChangeDao;
         this.fileMetricsDao = fileMetricsDao;
+        this.fileDao = fileDao;
     }
 
     /** Counts LOC for all git-tracked files. */
@@ -43,23 +43,50 @@ final class LocCounter {
     /** Counts LOC only for the given repo-relative paths (incremental use). */
     int count(Set<String> paths) {
         long now = System.currentTimeMillis();
-        List<FileMetricsRecord> batch = new ArrayList<>();
+        // Collect relPath + metrics first, then resolve to IDs
+        List<String> countedPaths = new ArrayList<>();
+        List<int[]> countedMetrics = new ArrayList<>();
 
         for (String relPath : paths) {
             Path file = repoDir.resolve(relPath);
             if (!Files.exists(file) || !Files.isRegularFile(file)) continue;
             try {
                 int loc = countLines(file);
-                batch.add(new FileMetricsRecord(relPath, loc, -1, -1, now));
+                countedPaths.add(relPath);
+                countedMetrics.add(new int[]{loc});
             } catch (IOException e) {
                 // Binary or unreadable file — skip silently
             }
         }
 
-        if (!batch.isEmpty()) {
-            fileMetricsDao.upsertBatch(batch);
+        if (!countedPaths.isEmpty()) {
+            Map<String, Long> pathToId = resolvePaths(countedPaths);
+            List<FileMetricsIdRecord> batch = new ArrayList<>(countedPaths.size());
+            for (int i = 0; i < countedPaths.size(); i++) {
+                Long id = pathToId.get(countedPaths.get(i));
+                if (id != null) {
+                    batch.add(new FileMetricsIdRecord(id, countedMetrics.get(i)[0], -1, -1, now));
+                }
+            }
+            if (!batch.isEmpty()) {
+                fileMetricsDao.upsertBatch(batch);
+            }
         }
-        return batch.size();
+        return countedPaths.size();
+    }
+
+    private Map<String, Long> resolvePaths(List<String> paths) {
+        int chunkSize = 999;
+        for (int i = 0; i < paths.size(); i += chunkSize) {
+            fileDao.insertBatch(paths.subList(i, Math.min(i + chunkSize, paths.size())));
+        }
+        Map<String, Long> result = new HashMap<>();
+        for (int i = 0; i < paths.size(); i += chunkSize) {
+            for (FileDao.FileRecord r : fileDao.findByPaths(paths.subList(i, Math.min(i + chunkSize, paths.size())))) {
+                result.put(r.path(), r.fileId());
+            }
+        }
+        return result;
     }
 
     private static int countLines(Path file) throws IOException {

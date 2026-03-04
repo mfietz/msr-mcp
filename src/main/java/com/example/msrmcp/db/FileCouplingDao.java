@@ -1,6 +1,5 @@
 package com.example.msrmcp.db;
 
-import com.example.msrmcp.model.FileCouplingRecord;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
@@ -12,27 +11,26 @@ import java.util.List;
 public interface FileCouplingDao {
 
     @SqlBatch("""
-            INSERT INTO file_coupling(file_a, file_b, co_changes, total_changes_a, total_changes_b)
-            VALUES(:fileA, :fileB, :coChanges, :totalChangesA, :totalChangesB)
-            ON CONFLICT(file_a, file_b) DO UPDATE SET
+            INSERT INTO file_coupling(file_a_id, file_b_id, co_changes, total_changes_a, total_changes_b)
+            VALUES(:fileAId, :fileBId, :coChanges, :totalChangesA, :totalChangesB)
+            ON CONFLICT(file_a_id, file_b_id) DO UPDATE SET
               co_changes      = co_changes      + excluded.co_changes,
               total_changes_a = total_changes_a + excluded.total_changes_a,
               total_changes_b = total_changes_b + excluded.total_changes_b
             """)
-    void upsertBatch(@BindMethods List<FileCouplingRecord> records);
+    void upsertBatch(@BindMethods List<FileCouplingIdRecord> records);
 
-    /**
-     * Use the pre-aggregated table (fast, no time filter).
-     * fileFilter e.g. "%.java" or null for all.
-     */
     @SqlQuery("""
             SELECT
-              file_a, file_b, co_changes, total_changes_a, total_changes_b,
-              CAST(co_changes AS REAL) / MIN(total_changes_a, total_changes_b) AS coupling_ratio
-            FROM file_coupling
-            WHERE (:fileFilter IS NULL OR file_a LIKE :fileFilter OR file_b LIKE :fileFilter)
-              AND total_changes_a > 0 AND total_changes_b > 0
-              AND CAST(co_changes AS REAL) / MIN(total_changes_a, total_changes_b) >= :minCoupling
+              fa.path AS file_a, fb.path AS file_b,
+              fc.co_changes, fc.total_changes_a, fc.total_changes_b,
+              CAST(fc.co_changes AS REAL) / MIN(fc.total_changes_a, fc.total_changes_b) AS coupling_ratio
+            FROM file_coupling fc
+            JOIN files fa ON fa.file_id = fc.file_a_id
+            JOIN files fb ON fb.file_id = fc.file_b_id
+            WHERE (:fileFilter IS NULL OR fa.path LIKE :fileFilter OR fb.path LIKE :fileFilter)
+              AND fc.total_changes_a > 0 AND fc.total_changes_b > 0
+              AND CAST(fc.co_changes AS REAL) / MIN(fc.total_changes_a, fc.total_changes_b) >= :minCoupling
             ORDER BY coupling_ratio DESC
             LIMIT :topN
             """)
@@ -41,34 +39,33 @@ public interface FileCouplingDao {
             @Bind("fileFilter") String fileFilter,
             @Bind("topN") int topN);
 
-    /**
-     * Computes coupling dynamically from raw file_changes within a time window (slower).
-     */
     @SqlQuery("""
             WITH recent AS (
-              SELECT fc.file_path, fc.commit_hash
+              SELECT fc.file_id, fc.commit_hash
               FROM file_changes fc
               JOIN commits c ON c.hash = fc.commit_hash
               WHERE c.author_date >= :sinceEpochMs
             ),
             totals AS (
-              SELECT file_path, COUNT(DISTINCT commit_hash) AS total_changes
+              SELECT file_id, COUNT(DISTINCT commit_hash) AS total_changes
               FROM recent
-              GROUP BY file_path
+              GROUP BY file_id
             )
             SELECT
-              a.file_path AS file_a,
-              b.file_path AS file_b,
+              fa.path AS file_a,
+              fb.path AS file_b,
               COUNT(DISTINCT a.commit_hash) AS co_changes,
               ta.total_changes AS total_changes_a,
               tb.total_changes AS total_changes_b,
               CAST(COUNT(DISTINCT a.commit_hash) AS REAL) / MIN(ta.total_changes, tb.total_changes) AS coupling_ratio
             FROM recent a
-            JOIN recent b ON b.commit_hash = a.commit_hash AND a.file_path < b.file_path
-            JOIN totals ta ON ta.file_path = a.file_path
-            JOIN totals tb ON tb.file_path = b.file_path
-            WHERE (:fileFilter IS NULL OR a.file_path LIKE :fileFilter OR b.file_path LIKE :fileFilter)
-            GROUP BY a.file_path, b.file_path
+            JOIN recent b ON b.commit_hash = a.commit_hash AND a.file_id < b.file_id
+            JOIN totals ta ON ta.file_id = a.file_id
+            JOIN totals tb ON tb.file_id = b.file_id
+            JOIN files fa ON fa.file_id = a.file_id
+            JOIN files fb ON fb.file_id = b.file_id
+            WHERE (:fileFilter IS NULL OR fa.path LIKE :fileFilter OR fb.path LIKE :fileFilter)
+            GROUP BY a.file_id, b.file_id
             HAVING coupling_ratio >= :minCoupling
             ORDER BY coupling_ratio DESC
             LIMIT :topN
@@ -79,20 +76,19 @@ public interface FileCouplingDao {
             @Bind("minCoupling") double minCoupling,
             @Bind("topN") int topN);
 
-    /**
-     * Returns the top-N files most coupled to {@code filePath}, regardless of
-     * whether the file is stored as file_a or file_b.
-     */
     @SqlQuery("""
             SELECT
-              CASE WHEN file_a = :filePath THEN file_b ELSE file_a END AS partner_path,
-              co_changes,
-              CASE WHEN file_a = :filePath THEN total_changes_a ELSE total_changes_b END AS target_total_changes,
-              CASE WHEN file_a = :filePath THEN total_changes_b ELSE total_changes_a END AS partner_total_changes,
-              CAST(co_changes AS REAL) / MIN(total_changes_a, total_changes_b) AS coupling_ratio
-            FROM file_coupling
-            WHERE (file_a = :filePath OR file_b = :filePath)
-              AND CAST(co_changes AS REAL) / MIN(total_changes_a, total_changes_b) >= :minCoupling
+              CASE WHEN fc.file_a_id = fTarget.file_id THEN fb.path ELSE fa.path END AS partner_path,
+              fc.co_changes,
+              CASE WHEN fc.file_a_id = fTarget.file_id THEN fc.total_changes_a ELSE fc.total_changes_b END AS target_total_changes,
+              CASE WHEN fc.file_a_id = fTarget.file_id THEN fc.total_changes_b ELSE fc.total_changes_a END AS partner_total_changes,
+              CAST(fc.co_changes AS REAL) / MIN(fc.total_changes_a, fc.total_changes_b) AS coupling_ratio
+            FROM file_coupling fc
+            JOIN files fa ON fa.file_id = fc.file_a_id
+            JOIN files fb ON fb.file_id = fc.file_b_id
+            JOIN files fTarget ON fTarget.path = :filePath
+            WHERE (fc.file_a_id = fTarget.file_id OR fc.file_b_id = fTarget.file_id)
+              AND CAST(fc.co_changes AS REAL) / MIN(fc.total_changes_a, fc.total_changes_b) >= :minCoupling
             ORDER BY coupling_ratio DESC
             LIMIT :topN
             """)
@@ -103,6 +99,13 @@ public interface FileCouplingDao {
 
     @SqlUpdate("DELETE FROM file_coupling")
     void deleteAll();
+
+    record FileCouplingIdRecord(
+            long fileAId,
+            long fileBId,
+            int coChanges,
+            int totalChangesA,
+            int totalChangesB) {}
 
     record CouplingRow(
             String fileA,
