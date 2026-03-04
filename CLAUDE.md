@@ -40,6 +40,7 @@ com.example.msrmcp
 │   ├── GetFileCommitHistoryTool.java  # jiraSlug filter via LIKE on commits.jira_slug
 │   ├── GetFileAuthorsTool.java        # authors ranked by commit count; uses CommitDao.findAuthorsForFile
 │   ├── GetBusFactorTool.java          # dominanceRatio = top author commits / total; CommitDao.findBusFactorFiles
+│   ├── GetChurnTool.java              # top files by lines added+deleted; FileChangeDao.findTopChurn
 │   └── RefreshIndexTool.java
 ├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
 │                                # FileMetricsRecord, FileCouplingRecord, HotspotResult, IndexResult, SummaryResult

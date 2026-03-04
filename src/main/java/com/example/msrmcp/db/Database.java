@@ -34,9 +34,11 @@ public final class Database {
             );
 
             CREATE TABLE IF NOT EXISTS file_changes (
-                id        INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                commit_id INTEGER NOT NULL REFERENCES commits(commit_id),
-                file_id   INTEGER NOT NULL REFERENCES files(file_id)
+                id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                commit_id    INTEGER NOT NULL REFERENCES commits(commit_id),
+                file_id      INTEGER NOT NULL REFERENCES files(file_id),
+                lines_added  INTEGER NOT NULL DEFAULT 0,
+                lines_deleted INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_file_changes_commitid ON file_changes(commit_id);
             CREATE INDEX IF NOT EXISTS idx_file_changes_fileid_commitid ON file_changes(file_id, commit_id);
@@ -80,6 +82,7 @@ public final class Database {
         jdbi.registerRowMapper(ConstructorMapper.factory(FileMetricsRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeDao.FileChangeFrequencyRow.class));
+        jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeDao.ChurnRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.CouplingRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.PartnerRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(CommitDao.AuthorRow.class));
@@ -92,6 +95,10 @@ public final class Database {
         jdbi.useHandle(h -> {
             for (String col : List.of("author_email TEXT", "author_name TEXT")) {
                 try { h.execute("ALTER TABLE commits ADD COLUMN " + col); } catch (Exception ignored) {}
+            }
+            for (String col : List.of("lines_added INTEGER NOT NULL DEFAULT 0",
+                                      "lines_deleted INTEGER NOT NULL DEFAULT 0")) {
+                try { h.execute("ALTER TABLE file_changes ADD COLUMN " + col); } catch (Exception ignored) {}
             }
         });
 

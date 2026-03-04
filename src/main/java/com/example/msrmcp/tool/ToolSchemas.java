@@ -89,6 +89,19 @@ final class ToolSchemas {
                 List.of("filePath"), null, null, null);
     }
 
+    static JsonSchema churn() {
+        return new JsonSchema("object", Map.of(
+                "topN", Map.of("type", "integer", "description", "Max results (default 20)",
+                        "minimum", 1, "default", 20),
+                "sinceEpochMs", Map.of("type", "integer",
+                        "description", "Only include commits after this Unix timestamp in ms"),
+                "extension", Map.of("type", "string",
+                        "description", "File extension filter, e.g. \".java\" or \".ts\". Default: all files"),
+                "pathFilter", Map.of("type", "string",
+                        "description", "SQL LIKE path pattern, e.g. \"src/service/%\". Default: all paths")),
+                List.of(), null, null, null);
+    }
+
     static JsonSchema empty() {
         return new JsonSchema("object", Map.of(), List.of(), null, null, null);
     }
