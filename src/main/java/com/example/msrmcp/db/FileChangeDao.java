@@ -55,5 +55,8 @@ public interface FileChangeDao {
     @SqlQuery("SELECT DISTINCT file_path FROM file_changes")
     List<String> findDistinctPaths();
 
+    @SqlQuery("SELECT COUNT(DISTINCT file_path) FROM file_changes")
+    int countDistinctPaths();
+
     record FileChangeFrequencyRow(String filePath, int changeFrequency) {}
 }

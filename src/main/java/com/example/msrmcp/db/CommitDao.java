@@ -32,4 +32,10 @@ public interface CommitDao {
 
     @SqlQuery("SELECT COUNT(*) FROM commits")
     int count();
+
+    @SqlQuery("SELECT MIN(author_date) FROM commits")
+    Optional<Long> findEarliestAuthorDate();
+
+    @SqlQuery("SELECT MAX(author_date) FROM commits")
+    Optional<Long> findLatestAuthorDate();
 }

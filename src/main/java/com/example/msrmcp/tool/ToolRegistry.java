@@ -29,6 +29,7 @@ public final class ToolRegistry {
         GetFileCommitHistoryTool history =
                 new GetFileCommitHistoryTool(commitDao, fileChangeDao);
         RefreshIndexTool refresh = new RefreshIndexTool(repoDir, db);
+        GetSummaryTool summary = new GetSummaryTool(commitDao, fileChangeDao, fileMetricsDao);
 
         return List.of(
                 new McpServerFeatures.SyncToolSpecification(
@@ -45,7 +46,11 @@ public final class ToolRegistry {
 
                 new McpServerFeatures.SyncToolSpecification(
                         RefreshIndexTool.toolSpec(),
-                        (exchange, req) -> refresh.handle(req.arguments()))
+                        (exchange, req) -> refresh.handle(req.arguments())),
+
+                new McpServerFeatures.SyncToolSpecification(
+                        GetSummaryTool.toolSpec(),
+                        (exchange, req) -> summary.handle(req.arguments()))
         );
     }
 }
