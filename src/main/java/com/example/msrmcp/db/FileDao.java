@@ -16,6 +16,9 @@ public interface FileDao {
     @SqlQuery("SELECT file_id, path FROM files WHERE path IN (<paths>)")
     List<FileRecord> findByPaths(@BindList("paths") List<String> paths);
 
+    @SqlQuery("SELECT path FROM files")
+    List<String> findAllPaths();
+
     @SqlQuery("SELECT file_id FROM files WHERE path = :path")
     List<Long> findIdByPath(@Bind("path") String path);
 

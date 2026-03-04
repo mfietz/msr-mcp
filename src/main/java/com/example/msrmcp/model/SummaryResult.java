@@ -9,11 +9,16 @@ import java.util.List;
  */
 public record SummaryResult(
         int totalCommits,
+        int uniqueAuthors,
         int totalFilesTracked,
         int filesWithMetrics,
         long earliestCommitMs,
         long latestCommitMs,
-        List<TopFile> topChangedFiles
+        List<TopFile> topChangedFiles,
+        List<AuthorSummary> topAuthors,
+        List<LangCount> languageDistribution
 ) {
     public record TopFile(String filePath, int changeFrequency) {}
+    public record AuthorSummary(String name, String email, int commits) {}
+    public record LangCount(String extension, int fileCount) {}
 }

@@ -39,7 +39,8 @@ class GetSummaryAcceptanceTest {
         summaryTool = new GetSummaryTool(
                 db.attach(CommitDao.class),
                 db.attach(FileChangeDao.class),
-                db.attach(FileMetricsDao.class));
+                db.attach(FileMetricsDao.class),
+                db.attach(FileDao.class));
     }
 
     @AfterAll
@@ -80,6 +81,26 @@ class GetSummaryAcceptanceTest {
         String json = text(summaryTool.handle(Map.of()));
         assertThat(json).contains("\"topChangedFiles\"");
         assertThat(json).contains("Main.java");
+    }
+
+    @Test
+    void uniqueAuthors_isOne() {
+        String json = text(summaryTool.handle(Map.of()));
+        assertThat(json).contains("\"uniqueAuthors\":1");
+    }
+
+    @Test
+    void topAuthors_containsTestAuthor() {
+        String json = text(summaryTool.handle(Map.of()));
+        assertThat(json).contains("\"topAuthors\"");
+        assertThat(json).contains("Test Author");
+    }
+
+    @Test
+    void languageDistribution_containsJava() {
+        String json = text(summaryTool.handle(Map.of()));
+        assertThat(json).contains("\"languageDistribution\"");
+        assertThat(json).contains("\".java\"");
     }
 
     private static String text(io.modelcontextprotocol.spec.McpSchema.CallToolResult r) {

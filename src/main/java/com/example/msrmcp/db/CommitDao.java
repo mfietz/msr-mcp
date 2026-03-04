@@ -34,6 +34,18 @@ public interface CommitDao {
     @SqlQuery("SELECT COUNT(*) FROM commits")
     int count();
 
+    @SqlQuery("SELECT COUNT(DISTINCT author_email) FROM commits")
+    int countDistinctAuthors();
+
+    @SqlQuery("""
+            SELECT author_email, author_name, COUNT(*) AS commit_count
+            FROM commits
+            GROUP BY author_email
+            ORDER BY commit_count DESC
+            LIMIT :topN
+            """)
+    List<AuthorRow> findTopAuthors(@Bind("topN") int topN);
+
     @SqlQuery("SELECT MIN(author_date) FROM commits")
     Optional<Long> findEarliestAuthorDate();
 

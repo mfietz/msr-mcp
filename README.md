@@ -124,12 +124,20 @@ No arguments. Returns a repo overview:
 ```json
 {
   "totalCommits": 312,
+  "uniqueAuthors": 8,
   "totalFilesTracked": 94,
   "filesWithMetrics": 42,
   "earliestCommitMs": 1704067200000,
   "latestCommitMs": 1741046400000,
   "topChangedFiles": [
     { "filePath": "src/main/java/com/example/Foo.java", "changeFrequency": 47 }
+  ],
+  "topAuthors": [
+    { "name": "Alice", "email": "alice@example.com", "commits": 120 }
+  ],
+  "languageDistribution": [
+    { "extension": ".java", "fileCount": 72 },
+    { "extension": ".xml",  "fileCount": 12 }
   ]
 }
 ```

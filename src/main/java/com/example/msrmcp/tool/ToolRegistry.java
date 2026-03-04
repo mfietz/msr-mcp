@@ -23,13 +23,16 @@ public final class ToolRegistry {
             Path repoDir,
             Database db) {
 
+        FileDao fileDao = db.attach(FileDao.class);
+
         GetHotspotsTool hotspots = new GetHotspotsTool(fileChangeDao, fileMetricsDao);
         GetTemporalCouplingTool coupling =
                 new GetTemporalCouplingTool(fileCouplingDao, fileChangeDao);
         GetFileCommitHistoryTool history =
                 new GetFileCommitHistoryTool(commitDao, fileChangeDao);
         RefreshIndexTool refresh = new RefreshIndexTool(repoDir, db);
-        GetSummaryTool summary = new GetSummaryTool(commitDao, fileChangeDao, fileMetricsDao);
+        GetSummaryTool summary =
+                new GetSummaryTool(commitDao, fileChangeDao, fileMetricsDao, fileDao);
         GetFileCouplingTool fileCoupling = new GetFileCouplingTool(fileCouplingDao);
         GetFileAuthorsTool fileAuthors = new GetFileAuthorsTool(commitDao);
         GetBusFactorTool busFactor = new GetBusFactorTool(commitDao);

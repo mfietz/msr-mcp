@@ -44,6 +44,7 @@ com.example.msrmcp
 │   ├── GetFileAuthorsTool.java        # authors ranked by commit count; uses CommitDao.findAuthorsForFile
 │   ├── GetBusFactorTool.java          # dominanceRatio = top author commits / total; CommitDao.findBusFactorFiles
 │   ├── GetChurnTool.java              # top files by lines added+deleted; FileChangeDao.findTopChurn
+│   ├── GetSummaryTool.java            # now also returns uniqueAuthors, topAuthors, languageDistribution
 │   └── RefreshIndexTool.java
 ├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
 │                                # FileMetricsRecord, FileCouplingRecord, HotspotResult, IndexResult, SummaryResult
