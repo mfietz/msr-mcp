@@ -6,6 +6,7 @@ import org.jdbi.v3.core.mapper.reflect.ConstructorMapper;
 import org.jdbi.v3.sqlobject.SqlObjectPlugin;
 
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Opens (or creates) the SQLite database, applies pragmas and DDL,
@@ -15,14 +16,17 @@ public final class Database {
 
     private static final String DDL = """
             CREATE TABLE IF NOT EXISTS commits (
-                commit_id   INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                hash        TEXT    NOT NULL UNIQUE,
-                author_date INTEGER NOT NULL,
-                first_line  TEXT    NOT NULL,
-                jira_slug   TEXT
+                commit_id    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                hash         TEXT    NOT NULL UNIQUE,
+                author_date  INTEGER NOT NULL,
+                first_line   TEXT    NOT NULL,
+                jira_slug    TEXT,
+                author_email TEXT,
+                author_name  TEXT
             );
-            CREATE INDEX IF NOT EXISTS idx_commits_author_date ON commits(author_date);
-            CREATE INDEX IF NOT EXISTS idx_commits_jira_slug   ON commits(jira_slug) WHERE jira_slug IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_commits_author_date  ON commits(author_date);
+            CREATE INDEX IF NOT EXISTS idx_commits_jira_slug    ON commits(jira_slug) WHERE jira_slug IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_commits_author_email ON commits(author_email);
 
             CREATE TABLE IF NOT EXISTS files (
                 file_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -78,9 +82,17 @@ public final class Database {
         jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeDao.FileChangeFrequencyRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.CouplingRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.PartnerRow.class));
+        jdbi.registerRowMapper(ConstructorMapper.factory(CommitDao.AuthorRow.class));
 
         // WAL mode for better concurrent read performance
         jdbi.useHandle(h -> h.execute("PRAGMA journal_mode=WAL"));
+
+        // Migrations for existing databases (ALTER TABLE ignores duplicate columns via try-catch)
+        jdbi.useHandle(h -> {
+            for (String col : List.of("author_email TEXT", "author_name TEXT")) {
+                try { h.execute("ALTER TABLE commits ADD COLUMN " + col); } catch (Exception ignored) {}
+            }
+        });
 
         // Apply schema (idempotent)
         jdbi.useHandle(h -> {

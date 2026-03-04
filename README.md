@@ -15,7 +15,8 @@ Analyses your git history and exposes four MCP tools that any MCP-compatible AI 
 | `get_hotspots` | Top files ranked by change frequency × complexity (supports path/extension filter) |
 | `get_temporal_coupling` | File pairs most often changed together |
 | `get_file_coupling` | Coupling partners for a specific file |
-| `get_file_commit_history` | Commit history for one file with JIRA slug extraction |
+| `get_file_commit_history` | Commit history for one file with JIRA slug extraction and filter |
+| `get_file_authors` | Authors ranked by commit count for a specific file (knowledge owners) |
 | `refresh_index` | Rebuild the full `.msr/` index from scratch |
 
 Only the **default branch** (`main` → `master` → `HEAD`) is indexed.
@@ -188,6 +189,23 @@ Returns the files most frequently changed together with the given file:
     "partnerTotalChanges": 13,
     "couplingRatio": 0.92
   }
+]
+```
+
+### `get_file_authors`
+
+```
+filePath      string  (required) Repo-relative path, e.g. "src/Main.java"
+topN          int     Max authors to return (default 10)
+sinceEpochMs  long    Only include commits after this timestamp (ms)
+```
+
+Returns authors ranked by commit count for the given file:
+
+```json
+[
+  { "authorEmail": "alice@example.com", "authorName": "Alice", "commitCount": 42 },
+  { "authorEmail": "bob@example.com",   "authorName": "Bob",   "commitCount":  7 }
 ]
 ```
 

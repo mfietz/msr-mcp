@@ -100,12 +100,14 @@ final class GitWalker {
             int processed = 0;
 
             for (RevCommit commit : revWalk) {
-                String hash      = commit.getName();
-                long authorDate  = commit.getAuthorIdent().getWhen().getTime();
-                String firstLine = commit.getShortMessage();
-                String jiraSlug  = JiraSlugExtractor.extract(firstLine);
+                String hash        = commit.getName();
+                long authorDate    = commit.getAuthorIdent().getWhen().getTime();
+                String firstLine   = commit.getShortMessage();
+                String jiraSlug    = JiraSlugExtractor.extract(firstLine);
+                String authorEmail = commit.getAuthorIdent().getEmailAddress();
+                String authorName  = commit.getAuthorIdent().getName();
 
-                commitBatch.add(new CommitRecord(hash, authorDate, firstLine, jiraSlug));
+                commitBatch.add(new CommitRecord(hash, authorDate, firstLine, jiraSlug, authorEmail, authorName));
 
                 List<String> changedPaths = getChangedPaths(repo, commit, df);
                 for (String path : changedPaths) {

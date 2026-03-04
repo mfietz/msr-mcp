@@ -31,6 +31,7 @@ public final class ToolRegistry {
         RefreshIndexTool refresh = new RefreshIndexTool(repoDir, db);
         GetSummaryTool summary = new GetSummaryTool(commitDao, fileChangeDao, fileMetricsDao);
         GetFileCouplingTool fileCoupling = new GetFileCouplingTool(fileCouplingDao);
+        GetFileAuthorsTool fileAuthors = new GetFileAuthorsTool(commitDao);
 
         return List.of(
                 new McpServerFeatures.SyncToolSpecification(
@@ -55,7 +56,11 @@ public final class ToolRegistry {
 
                 new McpServerFeatures.SyncToolSpecification(
                         GetFileCouplingTool.toolSpec(),
-                        (exchange, req) -> fileCoupling.handle(req.arguments()))
+                        (exchange, req) -> fileCoupling.handle(req.arguments())),
+
+                new McpServerFeatures.SyncToolSpecification(
+                        GetFileAuthorsTool.toolSpec(),
+                        (exchange, req) -> fileAuthors.handle(req.arguments()))
         );
     }
 }

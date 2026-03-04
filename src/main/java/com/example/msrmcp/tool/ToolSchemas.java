@@ -64,6 +64,17 @@ final class ToolSchemas {
                 List.of("filePath"), null, null, null);
     }
 
+    static JsonSchema fileAuthors() {
+        return new JsonSchema("object", Map.of(
+                "filePath", Map.of("type", "string",
+                        "description", "Repo-relative file path, e.g. \"src/Main.java\""),
+                "topN", Map.of("type", "integer", "description", "Max authors to return (default 10)",
+                        "minimum", 1, "default", 10),
+                "sinceEpochMs", Map.of("type", "integer",
+                        "description", "Only include commits after this Unix timestamp in ms")),
+                List.of("filePath"), null, null, null);
+    }
+
     static JsonSchema empty() {
         return new JsonSchema("object", Map.of(), List.of(), null, null, null);
     }
