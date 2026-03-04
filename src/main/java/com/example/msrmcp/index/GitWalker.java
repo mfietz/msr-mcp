@@ -30,6 +30,8 @@ import java.util.*;
 final class GitWalker {
 
     private static final int BATCH_SIZE = 500;
+    /** Commits touching more files than this are excluded from coupling (bulk refactors, merges). */
+    static final int MAX_PATHS_FOR_COUPLING = 50;
 
     private final Path repoDir;
     private final CommitDao commitDao;
@@ -107,7 +109,9 @@ final class GitWalker {
                     allChangedPaths.add(path);
                 }
 
-                accumulateCoChanges(changedPaths, coChanges);
+                if (changedPaths.size() <= MAX_PATHS_FOR_COUPLING) {
+                    accumulateCoChanges(changedPaths, coChanges);
+                }
 
                 processed++;
                 if (processed % BATCH_SIZE == 0) {
