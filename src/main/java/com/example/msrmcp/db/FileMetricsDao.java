@@ -5,6 +5,7 @@ import org.jdbi.v3.sqlobject.customizer.BindList;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
+import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
 import java.util.List;
 
@@ -26,6 +27,12 @@ public interface FileMetricsDao {
 
     @SqlQuery("SELECT COUNT(*) FROM file_metrics")
     int count();
+
+    @SqlQuery("SELECT f.path FROM file_metrics fm JOIN files f ON f.file_id = fm.file_id")
+    List<String> findAllFilePaths();
+
+    @SqlUpdate("DELETE FROM file_metrics WHERE file_id IN (SELECT file_id FROM files WHERE path IN (<paths>))")
+    void deleteByPaths(@BindList("paths") List<String> paths);
 
     record FileMetricsIdRecord(long fileId, int loc, int cyclomaticComplexity, int cognitiveComplexity, long analyzedAt) {}
 }

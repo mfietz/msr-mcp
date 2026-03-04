@@ -111,6 +111,8 @@ Add `.msr/` to `.gitignore` (it's already in this repo's `.gitignore`).
 
 The index is updated **incrementally on every startup** — only commits newer than the last indexed tip are processed. Call `refresh_index` to force a full rebuild from scratch.
 
+Renamed files are tracked: history from before the rename is carried forward to the new path. Deleted files are pruned from the complexity metrics table so they no longer appear in hotspot or churn results.
+
 ---
 
 ## Tool reference
