@@ -43,9 +43,10 @@ public final class GetHotspotsTool {
             Long sinceEpochMs = longArg(args, "sinceEpochMs");
             String ext = stringArg(args, "extension", "");
             String extPattern = "%" + ext;  // "" → "%" matches all files
+            String pathFilter = stringArg(args, "pathFilter", "%");
 
             List<FileChangeFrequencyRow> rows =
-                    fileChangeDao.findTopChangedFiles(sinceEpochMs, extPattern, topN);
+                    fileChangeDao.findTopChangedFiles(sinceEpochMs, extPattern, pathFilter, topN);
 
             List<String> paths = rows.stream().map(FileChangeFrequencyRow::filePath).toList();
             Map<String, FileMetricsRecord> metricsMap = paths.isEmpty()

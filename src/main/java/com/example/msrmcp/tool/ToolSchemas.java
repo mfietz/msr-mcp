@@ -16,7 +16,9 @@ final class ToolSchemas {
                 "sinceEpochMs", Map.of("type", "integer",
                         "description", "Only include commits after this Unix timestamp in ms"),
                 "extension", Map.of("type", "string",
-                        "description", "File extension filter, e.g. \".java\" or \".ts\". Default: all files")),
+                        "description", "File extension filter, e.g. \".java\" or \".ts\". Default: all files"),
+                "pathFilter", Map.of("type", "string",
+                        "description", "SQL LIKE path pattern, e.g. \"src/service/%\". Default: all paths")),
                 List.of(), null, null, null);
     }
 

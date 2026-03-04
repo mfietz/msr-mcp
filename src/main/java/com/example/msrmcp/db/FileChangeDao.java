@@ -17,8 +17,10 @@ public interface FileChangeDao {
     void insertBatch(@BindMethods List<FileChangeRecord> changes);
 
     /**
-     * Top changed files, optionally filtered by epoch and file extension glob.
-     * sinceEpochMs=null means all time. extensionPattern e.g. "%.java".
+     * Top changed files, optionally filtered by epoch, extension, and path prefix.
+     * sinceEpochMs=null means all time.
+     * extensionPattern e.g. "%.java", "%" for all.
+     * pathFilter SQL LIKE pattern e.g. "src/service/%" or "%" for all.
      */
     @SqlQuery("""
             SELECT fc.file_path, COUNT(*) AS change_frequency
@@ -26,6 +28,7 @@ public interface FileChangeDao {
             JOIN commits c ON c.hash = fc.commit_hash
             WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
               AND fc.file_path LIKE :extensionPattern
+              AND fc.file_path LIKE :pathFilter
             GROUP BY fc.file_path
             ORDER BY change_frequency DESC
             LIMIT :topN
@@ -33,6 +36,7 @@ public interface FileChangeDao {
     List<FileChangeFrequencyRow> findTopChangedFiles(
             @Bind("sinceEpochMs") Long sinceEpochMs,
             @Bind("extensionPattern") String extensionPattern,
+            @Bind("pathFilter") String pathFilter,
             @Bind("topN") int topN);
 
     @SqlQuery("""

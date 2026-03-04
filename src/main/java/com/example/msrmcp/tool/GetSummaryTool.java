@@ -45,7 +45,7 @@ public final class GetSummaryTool {
             long latestMs          = commitDao.findLatestAuthorDate().orElse(0L);
 
             List<TopFile> topFiles = fileChangeDao
-                    .findTopChangedFiles(null, "%", TOP_FILES)
+                    .findTopChangedFiles(null, "%", "%", TOP_FILES)
                     .stream()
                     .map(r -> new TopFile(r.filePath(), r.changeFrequency()))
                     .toList();
