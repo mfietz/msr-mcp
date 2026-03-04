@@ -56,25 +56,10 @@ The server inherits the working directory from Claude Code, which is the repo ro
 
 ---
 
-### Option B — JBang (no repo checkout needed)
+### Option B — JBang (no checkout needed)
 
 ```bash
-# Run directly from the latest GitHub release
 jbang msr-mcp@mfietz/msr-mcp
-```
-
-Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "msr-mcp": {
-      "command": "jbang",
-      "args": ["msr-mcp@mfietz/msr-mcp"],
-      "workingDirectory": "/path/to/your/git/repo"
-    }
-  }
-}
 ```
 
 ### Option C — Build from source
@@ -83,21 +68,26 @@ Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_conf
 git clone https://github.com/mfietz/msr-mcp.git
 cd msr-mcp
 mvn package -DskipTests
+# JAR: target/msr-mcp-server.jar
 ```
 
-Claude Desktop config:
+### Other MCP clients (Claude Desktop, Cursor, …)
+
+Add to your client's MCP config, pointing `workingDirectory` at your git repo:
 
 ```json
 {
   "mcpServers": {
     "msr-mcp": {
       "command": "java",
-      "args": ["-jar", "/path/to/msr-mcp/target/msr-mcp-server.jar"],
+      "args": ["-jar", "/path/to/msr-mcp-server.jar"],
       "workingDirectory": "/path/to/your/git/repo"
     }
   }
 }
 ```
+
+For JBang replace `"command": "java"` / `"args": ["-jar", "..."]` with `"command": "jbang"` / `"args": ["msr-mcp@mfietz/msr-mcp"]`.
 
 ---
 
