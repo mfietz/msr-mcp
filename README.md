@@ -201,6 +201,26 @@ No arguments. Clears and rebuilds the entire index from scratch. Returns:
 
 ---
 
+## Further reading
+
+### Model Context Protocol
+- [MCP official documentation](https://modelcontextprotocol.io) — spec, concepts, quickstart
+- [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk) — source & examples used by this server
+
+### Mining Software Repositories — books
+- Adam Tornhill, *Your Code as a Crime Scene* (Pragmatic Programmers, 2015) — introduced hotspot analysis and temporal coupling as practical refactoring guides
+- Adam Tornhill, *Software Design X-Rays* (Pragmatic Programmers, 2018) — extends the method with team-level and architectural analyses
+
+### Tools implementing similar ideas
+- [CodeScene](https://codescene.com) — Tornhill's commercial platform; useful reference for what MSR-driven insights look like at scale
+- [code-maat](https://github.com/adamtornhill/code-maat) — Tornhill's original open-source command-line MSR tool (Clojure)
+
+### Academic background
+- [MSR conference series](https://www.msrconf.org/) — the primary academic venue for Mining Software Repositories research
+- [CodeCharta](https://maibornwolff.github.io/codecharta/) — open-source 3-D visualisation of code metrics including hotspots
+
+---
+
 ## Releasing
 
 Push a tag `v*` to trigger the release workflow which builds and attaches the fat JAR:
