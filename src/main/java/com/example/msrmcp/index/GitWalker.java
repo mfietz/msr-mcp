@@ -116,6 +116,7 @@ final class GitWalker {
                 processed++;
                 if (processed % BATCH_SIZE == 0) {
                     flush(commitBatch, changeBatch);
+                    System.err.printf("MSR:   %,d commits processed...%n", processed);
                 }
             }
 

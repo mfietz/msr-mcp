@@ -32,8 +32,11 @@ public final class Indexer {
         try {
             fileCouplingDao.deleteAll();
 
+            System.err.println("MSR:   walking git history...");
             GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao).walk();
+            System.err.printf("MSR:   %,d commits done. counting lines of code...%n", walk.commitsProcessed());
             new LocCounter(repoDir, fileChangeDao, fileMetricsDao).count();
+            System.err.println("MSR:   running PMD analysis...");
             int files = new PmdRunner(repoDir, fileMetricsDao).analyze();
 
             long duration = System.currentTimeMillis() - start;
@@ -67,6 +70,7 @@ public final class Indexer {
                 return runFull(repoDir, db);
             }
 
+            System.err.println("MSR:   walking git history...");
             GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao)
                     .walk(latestHash.get());
 
@@ -75,7 +79,9 @@ public final class Indexer {
                 return new IndexResult("ok", 0, 0, duration, null);
             }
 
+            System.err.printf("MSR:   %,d new commits. counting lines of code...%n", walk.commitsProcessed());
             new LocCounter(repoDir, fileChangeDao, fileMetricsDao).count(walk.changedPaths());
+            System.err.println("MSR:   running PMD analysis...");
             int files = new PmdRunner(repoDir, fileMetricsDao).analyze(walk.changedPaths());
 
             long duration = System.currentTimeMillis() - start;
