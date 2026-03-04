@@ -171,7 +171,11 @@ With `sinceEpochMs` a CTE-based query runs directly on `file_changes` (slower).
 filePath      string  (required) Repo-relative path, e.g. "src/Main.java"
 topN          int     Max partner files (default 10)
 minCoupling   double  Min coupling ratio 0–1 (default 0.1)
+sinceEpochMs  long    Time window; triggers slower dynamic query when set
 ```
+
+Without `sinceEpochMs` the fast pre-aggregated `file_coupling` table is used.
+With `sinceEpochMs` a CTE-based query runs directly on `file_changes` (slower).
 
 Returns the files most frequently changed together with the given file:
 

@@ -56,7 +56,9 @@ final class ToolSchemas {
                         "minimum", 1, "default", 10),
                 "minCoupling", Map.of("type", "number",
                         "description", "Minimum coupling ratio 0–1 (default 0.1)",
-                        "minimum", 0.0, "maximum", 1.0, "default", 0.1)),
+                        "minimum", 0.0, "maximum", 1.0, "default", 0.1),
+                "sinceEpochMs", Map.of("type", "integer",
+                        "description", "Time window start (ms); triggers dynamic query when set")),
                 List.of("filePath"), null, null, null);
     }
 

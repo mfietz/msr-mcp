@@ -97,6 +97,48 @@ public interface FileCouplingDao {
             @Bind("minCoupling") double minCoupling,
             @Bind("topN") int topN);
 
+    @SqlQuery("""
+            WITH recent AS (
+              SELECT fc.file_id, fc.commit_id
+              FROM file_changes fc
+              JOIN commits c ON c.commit_id = fc.commit_id
+              WHERE c.author_date >= :sinceEpochMs
+            ),
+            target_commits AS (
+              SELECT r.commit_id
+              FROM recent r
+              JOIN files f ON f.file_id = r.file_id AND f.path = :filePath
+            ),
+            partner_totals AS (
+              SELECT file_id, COUNT(DISTINCT commit_id) AS total_changes
+              FROM recent
+              GROUP BY file_id
+            ),
+            target_total AS (
+              SELECT COUNT(DISTINCT commit_id) AS total_changes FROM target_commits
+            )
+            SELECT
+              fb.path AS partner_path,
+              COUNT(DISTINCT r.commit_id) AS co_changes,
+              tt.total_changes AS target_total_changes,
+              pt.total_changes AS partner_total_changes,
+              CAST(COUNT(DISTINCT r.commit_id) AS REAL) / MIN(tt.total_changes, pt.total_changes) AS coupling_ratio
+            FROM recent r
+            JOIN target_commits tc ON tc.commit_id = r.commit_id
+            JOIN files fb ON fb.file_id = r.file_id AND fb.path != :filePath
+            JOIN partner_totals pt ON pt.file_id = r.file_id
+            CROSS JOIN target_total tt
+            GROUP BY r.file_id
+            HAVING coupling_ratio >= :minCoupling
+            ORDER BY coupling_ratio DESC
+            LIMIT :topN
+            """)
+    List<PartnerRow> findTopCoupledForFileSince(
+            @Bind("filePath") String filePath,
+            @Bind("sinceEpochMs") Long sinceEpochMs,
+            @Bind("minCoupling") double minCoupling,
+            @Bind("topN") int topN);
+
     @SqlUpdate("DELETE FROM file_coupling")
     void deleteAll();
 

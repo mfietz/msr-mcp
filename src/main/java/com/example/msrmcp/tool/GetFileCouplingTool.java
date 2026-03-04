@@ -41,8 +41,11 @@ public final class GetFileCouplingTool {
             int    topN       = GetHotspotsTool.intArg(args, "topN", 10);
             double minCoupling = doubleArg(args, "minCoupling", 0.1);
 
-            List<PartnerRow> rows =
-                    fileCouplingDao.findTopCoupledForFile(filePath, minCoupling, topN);
+            Long sinceEpochMs = GetHotspotsTool.longArg(args, "sinceEpochMs");
+
+            List<PartnerRow> rows = sinceEpochMs != null
+                    ? fileCouplingDao.findTopCoupledForFileSince(filePath, sinceEpochMs, minCoupling, topN)
+                    : fileCouplingDao.findTopCoupledForFile(filePath, minCoupling, topN);
 
             return GetHotspotsTool.ok(MAPPER.writeValueAsString(rows));
         } catch (Exception e) {

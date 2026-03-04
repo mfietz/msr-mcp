@@ -95,6 +95,26 @@ class GetFileCouplingAcceptanceTest {
         assertThat(result.isError()).isTrue();
     }
 
+    @Test
+    void sinceEpochMs_futureDate_returnsEmpty() {
+        // Commits are 2024-01-01T00–02:00Z; a 2025 cutoff excludes all
+        long cutoff = java.time.Instant.parse("2025-01-01T00:00:00Z").toEpochMilli();
+        String json = text(tool.handle(Map.of("filePath", "src/A.java", "sinceEpochMs", cutoff)));
+        assertThat(json).isEqualTo("[]");
+    }
+
+    @Test
+    void sinceEpochMs_afterFirstCommit_onlyCountsRecentCoChanges() {
+        // commit1 (T+0h): A+B init
+        // commit2 (T+1h): A+B changed
+        // commit3 (T+2h): A+B+C changed
+        // Cutoff between commit1 and commit2 → only commits 2+3 count (B still top partner)
+        long afterCommit1 = java.time.Instant.parse("2024-01-01T00:30:00Z").toEpochMilli();
+        String json = text(tool.handle(Map.of("filePath", "src/A.java", "sinceEpochMs", afterCommit1)));
+        assertThat(json).contains("src/B.java");
+        assertThat(json).contains("\"coChanges\":2");
+    }
+
     private static String text(CallToolResult r) {
         return ((TextContent) r.content().getFirst()).text();
     }
