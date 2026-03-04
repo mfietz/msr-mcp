@@ -12,7 +12,8 @@ final class ToolSchemas {
 
     static JsonSchema hotspots() {
         return new JsonSchema("object", Map.of(
-                "topN", Map.of("type", "integer", "description", "Max results (default 20)"),
+                "topN", Map.of("type", "integer", "description", "Max results (default 20)",
+                        "minimum", 1, "default", 20),
                 "sinceEpochMs", Map.of("type", "integer",
                         "description", "Only include commits after this Unix timestamp in ms"),
                 "extension", Map.of("type", "string",
@@ -24,9 +25,11 @@ final class ToolSchemas {
 
     static JsonSchema temporalCoupling() {
         return new JsonSchema("object", Map.of(
-                "topN", Map.of("type", "integer", "description", "Max results (default 20)"),
+                "topN", Map.of("type", "integer", "description", "Max results (default 20)",
+                        "minimum", 1, "default", 20),
                 "minCoupling", Map.of("type", "number",
-                        "description", "Minimum coupling ratio 0–1 (default 0.3)"),
+                        "description", "Minimum coupling ratio 0–1 (default 0.3)",
+                        "minimum", 0.0, "maximum", 1.0, "default", 0.3),
                 "fileFilter", Map.of("type", "string",
                         "description", "SQL LIKE pattern, e.g. \"%.java\""),
                 "sinceEpochMs", Map.of("type", "integer",
@@ -38,7 +41,8 @@ final class ToolSchemas {
         return new JsonSchema("object", Map.of(
                 "filePath", Map.of("type", "string",
                         "description", "Repo-relative file path, e.g. \"src/Main.java\""),
-                "limit", Map.of("type", "integer", "description", "Max commits (default 50)"),
+                "limit", Map.of("type", "integer", "description", "Max commits (default 50)",
+                        "minimum", 1, "default", 50),
                 "sinceEpochMs", Map.of("type", "integer",
                         "description", "Only include commits after this Unix timestamp in ms")),
                 List.of("filePath"), null, null, null);
@@ -48,9 +52,11 @@ final class ToolSchemas {
         return new JsonSchema("object", Map.of(
                 "filePath", Map.of("type", "string",
                         "description", "Repo-relative file path, e.g. \"src/Main.java\""),
-                "topN", Map.of("type", "integer", "description", "Max partner files (default 10)"),
+                "topN", Map.of("type", "integer", "description", "Max partner files (default 10)",
+                        "minimum", 1, "default", 10),
                 "minCoupling", Map.of("type", "number",
-                        "description", "Minimum coupling ratio 0–1 (default 0.1)")),
+                        "description", "Minimum coupling ratio 0–1 (default 0.1)",
+                        "minimum", 0.0, "maximum", 1.0, "default", 0.1)),
                 List.of("filePath"), null, null, null);
     }
 

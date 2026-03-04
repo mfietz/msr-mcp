@@ -66,6 +66,13 @@ public final class Main {
 
         McpSyncServer server = McpServer.sync(transport)
                 .serverInfo("msr-mcp", VERSION)
+                .instructions("""
+                        Mining Software Repository server. Analyses the git history of the \
+                        current repository and exposes tools for identifying hotspots \
+                        (frequently-changed complex files), temporal coupling (files that \
+                        change together), file-level coupling partners, commit history, \
+                        and a repo summary. All data comes from the indexed local git history — \
+                        no network calls are made.""")
                 .capabilities(ServerCapabilities.builder()
                         .tools(false)   // enable tools; false = no list-changed notifications
                         .build())
