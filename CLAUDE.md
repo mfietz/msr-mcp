@@ -7,9 +7,10 @@ com.example.msrmcp
 ├── Main.java                    # Entrypoint: git check → DB → runIncremental → STDIO loop
 ├── db/
 │   ├── Database.java            # Jdbi setup, WAL pragma, DDL, ConstructorMapper registration
-│   ├── CommitDao.java           # INSERT OR IGNORE + findLatestHash + count
+│   ├── CommitDao.java           # commits lookup table: insertBatch + findByHashes → CommitIdRecord(commitId, hash)
+│   │                            # + findLatestHash + count
 │   ├── FileDao.java             # files lookup table: insertBatch + findByPaths → FileRecord(fileId, path)
-│   ├── FileChangeDao.java       # insertBatch(FileChangeIdRecord) + query methods JOIN files
+│   ├── FileChangeDao.java       # insertBatch(FileChangeIdRecord) + query methods JOIN files+commits
 │   │                            # + findDistinctPaths (used by LocCounter.count())
 │   ├── FileMetricsDao.java      # upsertBatch(FileMetricsIdRecord) + findByPaths JOIN files + count
 │   └── FileCouplingDao.java     # upsertBatch(FileCouplingIdRecord, ON CONFLICT accumulate)
@@ -20,7 +21,7 @@ com.example.msrmcp
 │   ├── GitWalker.java           # RevWalk on main/master/HEAD; WalkResult(commitsProcessed,changedPaths)
 │   │                            # walk(stopAtHash) uses markUninteresting for incremental boundary
 │   │                            # EmptyTreeIterator for root commits (no parent)
-│   │                            # flush() resolves paths→IDs via FileDao before insert
+│   │                            # flush() resolves paths→IDs + hashes→IDs before insert
 │   ├── LocCounter.java          # Language-agnostic LOC counter; skips binaries via null-byte detection
 │   │                            # count() for full, count(Set<String>) for incremental
 │   │                            # resolves paths→IDs via FileDao before upsert
@@ -116,6 +117,13 @@ java -jar /path/to/msr-mcp-server.jar
 - DAO query methods JOIN to `files` and return string paths — tool layer unchanged
 - DAO insert methods accept ID-based records: `FileChangeIdRecord`, `FileMetricsIdRecord`, `FileCouplingIdRecord`
 - Path→ID resolution via `FileDao.insertBatch` (INSERT OR IGNORE) + `findByPaths`
+
+### Commit hash normalization (commits lookup table)
+- `commits(commit_id INTEGER PK AUTOINCREMENT, hash TEXT UNIQUE, ...)` — central hash→ID mapping
+- `file_changes` stores integer `commit_id` FK instead of TEXT `commit_hash`
+- DAO query methods JOIN to `commits` and return string hashes — tool layer unchanged
+- Hash→ID resolution via `CommitDao.findByHashes` (chunked to 999)
+- `FileChangeIdRecord(long commitId, long fileId)` — both FKs are integers
 - Coupling `file_a_id < file_b_id` enforced at flush time (may differ from lexicographic path order)
 - `@BindList` chunked to 999 per call (SQLite variable limit)
 

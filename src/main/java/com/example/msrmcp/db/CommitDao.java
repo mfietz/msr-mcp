@@ -2,6 +2,7 @@ package com.example.msrmcp.db;
 
 import com.example.msrmcp.model.CommitRecord;
 import org.jdbi.v3.sqlobject.customizer.Bind;
+import org.jdbi.v3.sqlobject.customizer.BindList;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
@@ -38,4 +39,9 @@ public interface CommitDao {
 
     @SqlQuery("SELECT MAX(author_date) FROM commits")
     Optional<Long> findLatestAuthorDate();
+
+    @SqlQuery("SELECT commit_id, hash FROM commits WHERE hash IN (<hashes>)")
+    List<CommitIdRecord> findByHashes(@BindList("hashes") List<String> hashes);
+
+    record CommitIdRecord(long commitId, String hash) {}
 }

@@ -181,13 +181,17 @@ final class GitWalker {
     private void flush(List<CommitRecord> commitBatch, List<String[]> changeBatchPairs) {
         if (!commitBatch.isEmpty()) commitDao.insertBatch(commitBatch);
         if (!changeBatchPairs.isEmpty()) {
-            // Collect unique paths, insert into files table, build path→id map
+            // Resolve commit hashes → IDs
+            Map<String, Long> hashToId = resolveHashes(
+                    changeBatchPairs.stream().map(p -> p[0]).distinct().toList());
+
+            // Resolve file paths → IDs
             Map<String, Long> pathToId = resolvePaths(
                     changeBatchPairs.stream().map(p -> p[1]).distinct().toList());
 
             List<FileChangeIdRecord> idRecords = new ArrayList<>(changeBatchPairs.size());
             for (String[] pair : changeBatchPairs) {
-                idRecords.add(new FileChangeIdRecord(pair[0], pathToId.get(pair[1])));
+                idRecords.add(new FileChangeIdRecord(hashToId.get(pair[0]), pathToId.get(pair[1])));
             }
             fileChangeDao.insertBatch(idRecords);
         }
@@ -229,6 +233,24 @@ final class GitWalker {
         for (int i = 0; i < records.size(); i += chunkSize) {
             fileCouplingDao.upsertBatch(records.subList(i, Math.min(i + chunkSize, records.size())));
         }
+    }
+
+    /**
+     * Looks up commit hashes and returns a hash→commitId map.
+     * Commits must already be inserted. Chunks to respect SQLite limits.
+     */
+    private Map<String, Long> resolveHashes(List<String> hashes) {
+        if (hashes.isEmpty()) return Map.of();
+
+        int chunkSize = 999;
+        Map<String, Long> result = new HashMap<>();
+        for (int i = 0; i < hashes.size(); i += chunkSize) {
+            List<String> chunk = hashes.subList(i, Math.min(i + chunkSize, hashes.size()));
+            for (CommitDao.CommitIdRecord r : commitDao.findByHashes(chunk)) {
+                result.put(r.hash(), r.commitId());
+            }
+        }
+        return result;
     }
 
     /**

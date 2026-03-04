@@ -15,7 +15,8 @@ public final class Database {
 
     private static final String DDL = """
             CREATE TABLE IF NOT EXISTS commits (
-                hash        TEXT    NOT NULL PRIMARY KEY,
+                commit_id   INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                hash        TEXT    NOT NULL UNIQUE,
                 author_date INTEGER NOT NULL,
                 first_line  TEXT    NOT NULL,
                 jira_slug   TEXT
@@ -28,12 +29,12 @@ public final class Database {
             );
 
             CREATE TABLE IF NOT EXISTS file_changes (
-                id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                commit_hash TEXT    NOT NULL REFERENCES commits(hash),
-                file_id     INTEGER NOT NULL REFERENCES files(file_id)
+                id        INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                commit_id INTEGER NOT NULL REFERENCES commits(commit_id),
+                file_id   INTEGER NOT NULL REFERENCES files(file_id)
             );
-            CREATE INDEX IF NOT EXISTS idx_file_changes_commit_hash ON file_changes(commit_hash);
-            CREATE INDEX IF NOT EXISTS idx_file_changes_fileid_commit ON file_changes(file_id, commit_hash);
+            CREATE INDEX IF NOT EXISTS idx_file_changes_commitid ON file_changes(commit_id);
+            CREATE INDEX IF NOT EXISTS idx_file_changes_fileid_commitid ON file_changes(file_id, commit_id);
 
             CREATE TABLE IF NOT EXISTS file_metrics (
                 file_id               INTEGER NOT NULL PRIMARY KEY REFERENCES files(file_id),
@@ -69,6 +70,7 @@ public final class Database {
         // snake_case columns to camelCase record components automatically.
         jdbi.registerRowMapper(ConstructorMapper.factory(FileDao.FileRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(CommitRecord.class));
+        jdbi.registerRowMapper(ConstructorMapper.factory(CommitDao.CommitIdRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileMetricsRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingRecord.class));

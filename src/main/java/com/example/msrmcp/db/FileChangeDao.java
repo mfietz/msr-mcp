@@ -10,8 +10,8 @@ import java.util.List;
 public interface FileChangeDao {
 
     @SqlBatch("""
-            INSERT INTO file_changes(commit_hash, file_id)
-            VALUES(:commitHash, :fileId)
+            INSERT INTO file_changes(commit_id, file_id)
+            VALUES(:commitId, :fileId)
             """)
     void insertBatch(@BindMethods List<FileChangeIdRecord> changes);
 
@@ -19,7 +19,7 @@ public interface FileChangeDao {
             SELECT f.path AS file_path, COUNT(*) AS change_frequency
             FROM file_changes fc
             JOIN files f ON f.file_id = fc.file_id
-            JOIN commits c ON c.hash = fc.commit_hash
+            JOIN commits c ON c.commit_id = fc.commit_id
             WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
               AND f.path LIKE :extensionPattern
               AND f.path LIKE :pathFilter
@@ -34,9 +34,9 @@ public interface FileChangeDao {
             @Bind("topN") int topN);
 
     @SqlQuery("""
-            SELECT fc.commit_hash
+            SELECT c.hash AS commit_hash
             FROM file_changes fc
-            JOIN commits c ON c.hash = fc.commit_hash
+            JOIN commits c ON c.commit_id = fc.commit_id
             WHERE fc.file_id = (SELECT file_id FROM files WHERE path = :filePath)
               AND (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
             ORDER BY c.author_date DESC
@@ -51,7 +51,7 @@ public interface FileChangeDao {
             SELECT f.path
             FROM file_changes fc
             JOIN files f ON f.file_id = fc.file_id
-            WHERE fc.commit_hash = :commitHash
+            WHERE fc.commit_id = (SELECT commit_id FROM commits WHERE hash = :commitHash)
             """)
     List<String> findPathsByCommit(@Bind("commitHash") String commitHash);
 
@@ -65,7 +65,7 @@ public interface FileChangeDao {
     @SqlQuery("SELECT COUNT(DISTINCT file_id) FROM file_changes")
     int countDistinctPaths();
 
-    record FileChangeIdRecord(String commitHash, long fileId) {}
+    record FileChangeIdRecord(long commitId, long fileId) {}
 
     record FileChangeFrequencyRow(String filePath, int changeFrequency) {}
 }

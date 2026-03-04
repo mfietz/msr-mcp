@@ -41,25 +41,25 @@ public interface FileCouplingDao {
 
     @SqlQuery("""
             WITH recent AS (
-              SELECT fc.file_id, fc.commit_hash
+              SELECT fc.file_id, fc.commit_id
               FROM file_changes fc
-              JOIN commits c ON c.hash = fc.commit_hash
+              JOIN commits c ON c.commit_id = fc.commit_id
               WHERE c.author_date >= :sinceEpochMs
             ),
             totals AS (
-              SELECT file_id, COUNT(DISTINCT commit_hash) AS total_changes
+              SELECT file_id, COUNT(DISTINCT commit_id) AS total_changes
               FROM recent
               GROUP BY file_id
             )
             SELECT
               fa.path AS file_a,
               fb.path AS file_b,
-              COUNT(DISTINCT a.commit_hash) AS co_changes,
+              COUNT(DISTINCT a.commit_id) AS co_changes,
               ta.total_changes AS total_changes_a,
               tb.total_changes AS total_changes_b,
-              CAST(COUNT(DISTINCT a.commit_hash) AS REAL) / MIN(ta.total_changes, tb.total_changes) AS coupling_ratio
+              CAST(COUNT(DISTINCT a.commit_id) AS REAL) / MIN(ta.total_changes, tb.total_changes) AS coupling_ratio
             FROM recent a
-            JOIN recent b ON b.commit_hash = a.commit_hash AND a.file_id < b.file_id
+            JOIN recent b ON b.commit_id = a.commit_id AND a.file_id < b.file_id
             JOIN totals ta ON ta.file_id = a.file_id
             JOIN totals tb ON tb.file_id = b.file_id
             JOIN files fa ON fa.file_id = a.file_id
