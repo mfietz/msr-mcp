@@ -22,6 +22,7 @@ public final class Database {
                 jira_slug   TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_commits_author_date ON commits(author_date);
+            CREATE INDEX IF NOT EXISTS idx_commits_jira_slug   ON commits(jira_slug) WHERE jira_slug IS NOT NULL;
 
             CREATE TABLE IF NOT EXISTS files (
                 file_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
