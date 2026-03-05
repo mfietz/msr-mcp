@@ -120,6 +120,20 @@ final class ToolSchemas {
                 List.of(), null, null, null);
     }
 
+    static JsonSchema staleFiles() {
+        return new JsonSchema("object", Map.of(
+                "topN", Map.of("type", "integer", "description", "Max results (default 20)",
+                        "minimum", 1, "default", 20),
+                "minDaysStale", Map.of("type", "integer",
+                        "description", "Only include files not changed for at least N days (default 180)",
+                        "minimum", 1, "default", 180),
+                "extension", Map.of("type", "string",
+                        "description", "File extension filter, e.g. \".java\" or \".ts\". Default: all files"),
+                "pathFilter", Map.of("type", "string",
+                        "description", "SQL LIKE path pattern, e.g. \"src/service/%\". Default: all paths")),
+                List.of(), null, null, null);
+    }
+
     static JsonSchema empty() {
         return new JsonSchema("object", Map.of(), List.of(), null, null, null);
     }
