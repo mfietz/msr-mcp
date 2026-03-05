@@ -1,12 +1,16 @@
 package com.example.msrmcp.index;
 
 import com.example.msrmcp.db.*;
+import com.example.msrmcp.db.FileMetricsDao.FileMetricsIdRecord;
 import com.example.msrmcp.model.IndexResult;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Orchestrates git history indexing and static analysis.
@@ -37,10 +41,19 @@ public final class Indexer {
 
             System.err.println("MSR:   walking git history...");
             GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao, fileDao).walk();
-            System.err.printf("MSR:   %,d commits done. counting lines of code...%n", walk.commitsProcessed());
-            new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao).count();
-            System.err.println("MSR:   running PMD analysis...");
-            int files = new PmdRunner(repoDir, fileMetricsDao, fileDao).analyze();
+            System.err.printf("MSR:   %,d commits done. running LOC + PMD in parallel...%n", walk.commitsProcessed());
+            LocCounter locCounter = new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao);
+            PmdRunner  pmdRunner  = new PmdRunner(repoDir, fileMetricsDao, fileDao);
+
+            ExecutorService exec = Executors.newFixedThreadPool(2);
+            Future<Integer>                   locFuture = exec.submit(() -> locCounter.count());
+            Future<List<FileMetricsIdRecord>> pmdFuture = exec.submit(() -> pmdRunner.collectMetrics());
+            exec.shutdown();
+
+            locFuture.get();
+            List<FileMetricsIdRecord> pmdBatch = pmdFuture.get();
+            pmdRunner.writeBatch(pmdBatch);
+            int files = pmdBatch.size();
 
             // Remove stale metrics for files deleted or renamed out of existence
             deleteStaleMetrics(repoDir, fileMetricsDao);
@@ -86,10 +99,19 @@ public final class Indexer {
                 return new IndexResult("ok", 0, 0, duration, null);
             }
 
-            System.err.printf("MSR:   %,d new commits. counting lines of code...%n", walk.commitsProcessed());
-            new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao).count(walk.changedPaths());
-            System.err.println("MSR:   running PMD analysis...");
-            int files = new PmdRunner(repoDir, fileMetricsDao, fileDao).analyze(walk.changedPaths());
+            System.err.printf("MSR:   %,d new commits. running LOC + PMD in parallel...%n", walk.commitsProcessed());
+            LocCounter locCounter = new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao);
+            PmdRunner  pmdRunner  = new PmdRunner(repoDir, fileMetricsDao, fileDao);
+
+            ExecutorService exec = Executors.newFixedThreadPool(2);
+            Future<Integer>                locFuture = exec.submit(() -> locCounter.count(walk.changedPaths()));
+            Future<List<FileMetricsIdRecord>> pmdFuture = exec.submit(() -> pmdRunner.collectMetrics(walk.changedPaths()));
+            exec.shutdown();
+
+            locFuture.get();
+            List<FileMetricsIdRecord> pmdBatch = pmdFuture.get();
+            pmdRunner.writeBatch(pmdBatch);
+            int files = pmdBatch.size();
 
             // Clean up metrics for any files deleted or renamed in the new commits
             List<String> gone = walk.changedPaths().stream()

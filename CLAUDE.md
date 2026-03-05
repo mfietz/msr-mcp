@@ -109,6 +109,13 @@ java -jar /path/to/msr-mcp-server.jar
 - `HotspotScorer` falls back to normalized LOC when cyclo is -1
 - `get_hotspots` default extension is `""` (matches all files, not just `.java`)
 
+### Parallel indexing (LocCounter + PmdRunner)
+- After `GitWalker` completes, `LocCounter` and `PmdRunner` run in parallel via a 2-thread `ExecutorService`
+- **Write ordering is preserved**: `locFuture.get()` completes first (LocCounter writes LOC for all files), then `pmdRunner.writeBatch(pmdBatch)` overwrites Java files with PMD-derived metrics
+- `PmdRunner` exposes two-phase API: `collectMetrics()` / `collectMetrics(Set<String>)` (scan only, no DB write) + `writeBatch(List<FileMetricsIdRecord>)` (write only)
+- `analyze()` / `analyze(Set<String>)` remain as convenience wrappers (collect + write)
+- Race condition avoided: PMD scan runs concurrently but writes sequentially after LocCounter
+
 ### Incremental indexing
 - `Indexer.runIncremental()` calls `commitDao.findLatestHash()` to find the boundary
 - `GitWalker.walk(stopAtHash)` uses `revWalk.markUninteresting()` to skip already-indexed commits
