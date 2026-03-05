@@ -100,8 +100,9 @@ class GetStaleFilesAcceptanceTest {
 
     @Test
     void complexFileRanksAboveSimpleFile() {
-        // Both files are equally old, but Complex.java has higher cyclomatic complexity
-        // → higher staleness score → appears first in JSON output
+        // Both files share the same lastCommitMs (single commit), so norm(daysSince) = 1.0
+        // for both (the normalise() sentinel for max == min). Ranking is then driven purely
+        // by norm(complexity): Complex.java (cyclo=3) > Simple.java (cyclo=1).
         CallToolResult result = tool.handle(Map.of("minDaysStale", 365));
         String json = ((TextContent) result.content().getFirst()).text();
 
