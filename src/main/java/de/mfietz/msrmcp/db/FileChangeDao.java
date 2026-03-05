@@ -107,4 +107,26 @@ public interface FileChangeDao {
 
     record FileChangeFrequencyRow(String filePath, int changeFrequency,
                                   long firstCommitMs, long lastCommitMs) {}
+
+    @SqlQuery("""
+            SELECT f.path AS file_path,
+                   MAX(c.author_date) AS last_commit_ms,
+                   MIN(c.author_date) AS first_commit_ms
+            FROM file_changes fc
+            JOIN files f   ON f.file_id   = fc.file_id
+            JOIN commits c ON c.commit_id = fc.commit_id
+            WHERE f.path LIKE :extensionPattern
+              AND f.path LIKE :pathFilter
+            GROUP BY fc.file_id
+            HAVING MAX(c.author_date) <= :cutoffMs
+            ORDER BY last_commit_ms ASC
+            LIMIT :limit
+            """)
+    List<StaleRow> findStaleFiles(
+            @Bind("cutoffMs") long cutoffMs,
+            @Bind("extensionPattern") String extensionPattern,
+            @Bind("pathFilter") String pathFilter,
+            @Bind("limit") int limit);
+
+    record StaleRow(String filePath, long lastCommitMs, long firstCommitMs) {}
 }
