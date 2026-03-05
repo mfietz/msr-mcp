@@ -44,9 +44,11 @@ com.example.msrmcp
 │   ├── GetOwnershipTool.java          # dominant author per file; ownershipBy=commits|lines; CommitDao.findOwnershipByCommits/Lines
 │   ├── GetChurnTool.java              # top files by lines added+deleted; FileChangeDao.findTopChurn
 │   ├── GetSummaryTool.java            # now also returns uniqueAuthors, topAuthors, languageDistribution
+│   ├── GetStaleFilesTool.java         # files not changed in N days × complexity score; FileChangeDao.findStaleFiles
 │   └── RefreshIndexTool.java
 ├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
-│                                # FileMetricsRecord, FileCouplingRecord, HotspotResult(+ageInDays,+daysSinceLastChange), IndexResult, SummaryResult
+│                                # FileMetricsRecord, FileCouplingRecord, HotspotResult(+ageInDays,+daysSinceLastChange), IndexResult, SummaryResult,
+│                                # StaleFileResult(filePath, daysSinceLastChange, ageInDays, loc, cyclomaticComplexity, stalenessScore)
 │                                # CommitDao.OwnershipRow (inline record: path, ownerEmail, ownerName, ownerCount, totalCount)
 └── util/
     ├── JiraSlugExtractor.java   # regex ^([A-Z]{2,4}-\d+)
