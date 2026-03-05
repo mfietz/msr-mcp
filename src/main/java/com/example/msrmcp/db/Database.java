@@ -124,4 +124,45 @@ public final class Database {
     public <T> T attach(Class<T> daoType) {
         return jdbi.onDemand(daoType);
     }
+
+    /**
+     * Drops the 8 analytical (query-only) indexes to speed up bulk inserts.
+     * Call before a full re-index; restore with {@link #createAnalyticalIndexes()} after.
+     * Safe to call multiple times (uses IF EXISTS).
+     */
+    public void dropAnalyticalIndexes() {
+        jdbi.useTransaction(h -> {
+            for (String name : List.of(
+                    "idx_commits_author_date",
+                    "idx_commits_jira_slug",
+                    "idx_commits_author_email",
+                    "idx_commits_commitid_authordate",
+                    "idx_file_changes_commitid",
+                    "idx_file_changes_fileid_commitid",
+                    "idx_coupling_a",
+                    "idx_coupling_b")) {
+                h.execute("DROP INDEX IF EXISTS " + name);
+            }
+        });
+    }
+
+    /**
+     * Recreates the 8 analytical indexes dropped by {@link #dropAnalyticalIndexes()}.
+     * Uses IF NOT EXISTS so it is safe to call even if indexes were never dropped.
+     */
+    public void createAnalyticalIndexes() {
+        jdbi.useTransaction(h -> {
+            for (String sql : List.of(
+                    "CREATE INDEX IF NOT EXISTS idx_commits_author_date ON commits(author_date)",
+                    "CREATE INDEX IF NOT EXISTS idx_commits_jira_slug ON commits(jira_slug) WHERE jira_slug IS NOT NULL",
+                    "CREATE INDEX IF NOT EXISTS idx_commits_author_email ON commits(author_email)",
+                    "CREATE INDEX IF NOT EXISTS idx_commits_commitid_authordate ON commits(commit_id, author_date)",
+                    "CREATE INDEX IF NOT EXISTS idx_file_changes_commitid ON file_changes(commit_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_file_changes_fileid_commitid ON file_changes(file_id, commit_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_coupling_a ON file_coupling(file_a_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_coupling_b ON file_coupling(file_b_id)")) {
+                h.execute(sql);
+            }
+        });
+    }
 }

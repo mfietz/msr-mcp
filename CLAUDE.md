@@ -171,6 +171,23 @@ java -jar /path/to/msr-mcp-server.jar
 - In `runIncremental()`: checks `changedPaths` against disk; deletes metrics for gone paths
 - `file_changes` history is retained — only the current-state `file_metrics` is cleaned up
 
+### Deferred index creation (runFull only)
+- `db.dropAnalyticalIndexes()` called before `GitWalker.walk()` in `runFull()`
+- `db.createAnalyticalIndexes()` called once after `walk()` completes, before LocCounter/PmdRunner
+- 8 query-only indexes on `commits`, `file_changes`, `file_coupling` are deferred
+- Structural indexes (UNIQUE on hash/path, PKs, coupling PK) are never dropped
+- `runIncremental()` is unchanged
+
+### Parallel diff computation (GitWalker)
+- Fixed thread pool: `Runtime.getRuntime().availableProcessors()` threads
+- `ThreadLocal<DiffFormatter>` — one JGit formatter per pool thread (JGit not thread-safe)
+- Two-phase window processing per 500-commit batch:
+  - Phase 1: submit `computeCommitDiff` tasks in parallel
+  - Phase 2: retrieve futures in chronological order, update maps sequentially
+- `CommitDiff` / `EntryData` private records carry only plain Java data across threads
+- Pool + formatters wrapped in `try/finally` for cleanup on exception path
+- Rename tracking and co-change semantics unchanged (Phase 2 is sequential)
+
 ### Temporal coupling `since` routing
 - No `sinceEpochMs`: fast path via pre-aggregated `file_coupling` table
 - With `sinceEpochMs`: CTE-based self-join on `file_changes` (correct but slower)

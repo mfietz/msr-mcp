@@ -38,10 +38,13 @@ public final class Indexer {
 
         try {
             fileCouplingDao.deleteAll();
+            db.dropAnalyticalIndexes();
 
             System.err.println("MSR:   walking git history...");
             GitWalker.WalkResult walk = new GitWalker(repoDir, commitDao, fileChangeDao, fileCouplingDao, fileDao).walk();
-            System.err.printf("MSR:   %,d commits done. running LOC + PMD in parallel...%n", walk.commitsProcessed());
+            System.err.printf("MSR:   %,d commits done. rebuilding indexes...%n", walk.commitsProcessed());
+            db.createAnalyticalIndexes();
+            System.err.println("MSR:   running LOC + PMD in parallel...");
             LocCounter locCounter = new LocCounter(repoDir, fileChangeDao, fileMetricsDao, fileDao);
             PmdRunner  pmdRunner  = new PmdRunner(repoDir, fileMetricsDao, fileDao);
 

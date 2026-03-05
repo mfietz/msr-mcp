@@ -24,6 +24,10 @@ import org.eclipse.jgit.util.io.DisabledOutputStream;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.logging.Logger;
 
 /**
@@ -92,69 +96,48 @@ final class GitWalker {
             // Walk oldest-first so rename pairs are collected in chronological order
             revWalk.sort(RevSort.REVERSE);
 
-            DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
-            df.setRepository(repo);
-            df.setDiffComparator(RawTextComparator.DEFAULT);
-            df.setDetectRenames(true);
+            int nThreads = Runtime.getRuntime().availableProcessors();
+            ExecutorService pool = Executors.newFixedThreadPool(nThreads);
+            List<DiffFormatter> formatters = Collections.synchronizedList(new ArrayList<>());
+            ThreadLocal<DiffFormatter> dfLocal = ThreadLocal.withInitial(() -> {
+                DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
+                df.setRepository(repo);
+                df.setDiffComparator(RawTextComparator.DEFAULT);
+                df.setDetectRenames(true);
+                formatters.add(df);
+                return df;
+            });
 
-            Map<String, int[]> coChanges   = new HashMap<>();
+            Map<String, int[]> coChanges    = new HashMap<>();
             Map<String, int[]> totalChanges = new HashMap<>();
-            Set<String> allChangedPaths    = new HashSet<>();
-            List<String[]> renames         = new ArrayList<>(); // [oldPath, newPath] in chronological order
+            Set<String> allChangedPaths     = new HashSet<>();
+            List<String[]> renames          = new ArrayList<>();
 
             List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
             List<ChangeEntry>  changeBatch  = new ArrayList<>(BATCH_SIZE * 4);
             int processed = 0;
 
-            for (RevCommit commit : revWalk) {
-                String hash        = commit.getName();
-                long authorDate    = commit.getAuthorIdent().getWhen().getTime();
-                String firstLine   = commit.getShortMessage();
-                String jiraSlug    = JiraSlugExtractor.extract(firstLine);
-                String authorEmail = commit.getAuthorIdent().getEmailAddress();
-                String authorName  = commit.getAuthorIdent().getName();
-
-                commitBatch.add(new CommitRecord(hash, authorDate, firstLine, jiraSlug, authorEmail, authorName));
-
-                List<DiffEntry> diffs = getDiffs(repo, commit, df);
-                List<String> changedPaths = new ArrayList<>(diffs.size());
-                for (DiffEntry entry : diffs) {
-                    String path = entry.getChangeType() == DiffEntry.ChangeType.DELETE
-                            ? entry.getOldPath() : entry.getNewPath();
-                    int linesAdded = 0, linesDeleted = 0;
-                    try {
-                        for (Edit edit : df.toFileHeader(entry).toEditList()) {
-                            linesAdded   += edit.getEndB() - edit.getBeginB();
-                            linesDeleted += edit.getEndA() - edit.getBeginA();
-                        }
-                    } catch (Exception ignored) {}
-                    changeBatch.add(new ChangeEntry(hash, path, linesAdded, linesDeleted));
-                    changedPaths.add(path);
-                    totalChanges.computeIfAbsent(path, k -> new int[1])[0]++;
-                    allChangedPaths.add(path);
-                    if (entry.getChangeType() == DiffEntry.ChangeType.RENAME) {
-                        String oldPath = entry.getOldPath();
-                        renames.add(new String[]{oldPath, path});
-                        applyRenameInMemory(oldPath, path, coChanges, totalChanges);
+            List<RevCommit> window = new ArrayList<>(BATCH_SIZE);
+            try {
+                for (RevCommit commit : revWalk) {
+                    window.add(commit);
+                    if (window.size() == BATCH_SIZE) {
+                        processWindow(window, repo, dfLocal, pool, commitBatch, changeBatch,
+                                      coChanges, totalChanges, renames, allChangedPaths);
+                        processed += window.size();
+                        window.clear();
+                        System.err.printf("MSR:   %,d commits processed...%n", processed);
                     }
                 }
-
-                if (changedPaths.size() <= MAX_PATHS_FOR_COUPLING) {
-                    accumulateCoChanges(changedPaths, coChanges);
+                if (!window.isEmpty()) {
+                    processWindow(window, repo, dfLocal, pool, commitBatch, changeBatch,
+                                  coChanges, totalChanges, renames, allChangedPaths);
+                    processed += window.size();
                 }
-
-                processed++;
-                if (processed % BATCH_SIZE == 0) {
-                    flush(commitBatch, changeBatch);
-                    System.err.printf("MSR:   %,d commits processed...%n", processed);
-                }
+            } finally {
+                pool.shutdownNow();
+                formatters.forEach(DiffFormatter::close);
             }
-
-            if (!commitBatch.isEmpty()) {
-                flush(commitBatch, changeBatch);
-            }
-
-            df.close();
             flushCoupling(coChanges, totalChanges);
             mergeRenames(renames);
 
@@ -182,6 +165,11 @@ final class GitWalker {
     }
 
     private record ChangeEntry(String hash, String path, int linesAdded, int linesDeleted) {}
+
+    private record CommitDiff(RevCommit commit, List<EntryData> entries) {}
+
+    private record EntryData(String path, String oldPath, boolean isRename,
+                             int linesAdded, int linesDeleted) {}
 
     private static void accumulateCoChanges(List<String> paths, Map<String, int[]> coChanges) {
         int n = paths.size();
@@ -278,6 +266,96 @@ final class GitWalker {
             updates.merge(a + "\0" + b, e.getValue(), (x, y) -> { x[0] += y[0]; return x; });
         }
         coChanges.putAll(updates);
+    }
+
+    /**
+     * Computes the diff for a single commit and returns serialisable data only.
+     * Safe to call from any thread because the caller supplies its own {@code df}.
+     * Exceptions inside individual entry processing are swallowed (best-effort).
+     */
+    private static CommitDiff computeCommitDiff(Repository repo, RevCommit commit,
+                                                 DiffFormatter df) {
+        List<EntryData> entries = new ArrayList<>();
+        try {
+            for (DiffEntry entry : getDiffs(repo, commit, df)) {
+                boolean isDelete = entry.getChangeType() == DiffEntry.ChangeType.DELETE;
+                boolean isRename = entry.getChangeType() == DiffEntry.ChangeType.RENAME;
+                String path    = isDelete ? entry.getOldPath() : entry.getNewPath();
+                String oldPath = isRename ? entry.getOldPath() : null;
+                int linesAdded = 0, linesDeleted = 0;
+                try {
+                    for (Edit edit : df.toFileHeader(entry).toEditList()) {
+                        linesAdded   += edit.getEndB() - edit.getBeginB();
+                        linesDeleted += edit.getEndA() - edit.getBeginA();
+                    }
+                } catch (Exception ignored) {}
+                entries.add(new EntryData(path, oldPath, isRename, linesAdded, linesDeleted));
+            }
+        } catch (Exception ignored) {}
+        return new CommitDiff(commit, entries);
+    }
+
+    /**
+     * Two-phase batch processor.
+     *
+     * <p>Phase 1: submits one diff-computation task per commit to {@code pool};
+     * each task uses a thread-local {@code DiffFormatter} (JGit objects are not
+     * thread-safe).
+     *
+     * <p>Phase 2: retrieves futures in submission order (= chronological order)
+     * and updates all in-memory maps sequentially — same semantics as the old loop.
+     */
+    private void processWindow(
+            List<RevCommit> window, Repository repo,
+            ThreadLocal<DiffFormatter> dfLocal, ExecutorService pool,
+            List<CommitRecord> commitBatch, List<ChangeEntry> changeBatch,
+            Map<String, int[]> coChanges, Map<String, int[]> totalChanges,
+            List<String[]> renames, Set<String> allChangedPaths) {
+
+        // Phase 1 — parallel diff computation
+        List<Future<CommitDiff>> futures = new ArrayList<>(window.size());
+        for (RevCommit commit : window) {
+            futures.add(pool.submit(() -> computeCommitDiff(repo, commit, dfLocal.get())));
+        }
+
+        // Phase 2 — sequential map update in chronological order
+        for (Future<CommitDiff> future : futures) {
+            CommitDiff cd;
+            try {
+                cd = future.get();
+            } catch (InterruptedException | ExecutionException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+
+            RevCommit commit = cd.commit();
+            String hash        = commit.getName();
+            long authorDate    = commit.getAuthorIdent().getWhen().getTime();
+            String firstLine   = commit.getShortMessage();
+            String jiraSlug    = JiraSlugExtractor.extract(firstLine);
+            String authorEmail = commit.getAuthorIdent().getEmailAddress();
+            String authorName  = commit.getAuthorIdent().getName();
+
+            commitBatch.add(new CommitRecord(hash, authorDate, firstLine, jiraSlug, authorEmail, authorName));
+
+            List<String> changedPaths = new ArrayList<>(cd.entries().size());
+            for (EntryData e : cd.entries()) {
+                changeBatch.add(new ChangeEntry(hash, e.path(), e.linesAdded(), e.linesDeleted()));
+                changedPaths.add(e.path());
+                totalChanges.computeIfAbsent(e.path(), k -> new int[1])[0]++;
+                allChangedPaths.add(e.path());
+                if (e.isRename()) {
+                    renames.add(new String[]{e.oldPath(), e.path()});
+                    applyRenameInMemory(e.oldPath(), e.path(), coChanges, totalChanges);
+                }
+            }
+
+            if (changedPaths.size() <= MAX_PATHS_FOR_COUPLING) {
+                accumulateCoChanges(changedPaths, coChanges);
+            }
+        }
+
+        flush(commitBatch, changeBatch);
     }
 
     /**
