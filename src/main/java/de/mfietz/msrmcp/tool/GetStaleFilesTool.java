@@ -55,9 +55,10 @@ public final class GetStaleFilesTool {
             if (rows.isEmpty()) return GetHotspotsTool.ok("[]");
 
             List<String> paths = rows.stream().map(StaleRow::filePath).toList();
-            Map<String, FileMetricsRecord> metricsMap = fileMetricsDao.findByPaths(paths)
-                    .stream()
-                    .collect(Collectors.toMap(FileMetricsRecord::filePath, r -> r));
+            Map<String, FileMetricsRecord> metricsMap = paths.isEmpty()
+                    ? Map.of()
+                    : fileMetricsDao.findByPaths(paths).stream()
+                            .collect(Collectors.toMap(FileMetricsRecord::filePath, r -> r));
 
             List<StaleFileResult> scored = score(rows, metricsMap, now);
             List<StaleFileResult> result = scored.subList(0, Math.min(topN, scored.size()));
