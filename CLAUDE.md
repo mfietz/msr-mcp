@@ -3,7 +3,7 @@
 ## Package map
 
 ```
-com.example.msrmcp
+de.mfietz.msrmcp
 ├── Main.java                    # Entrypoint: git check → DB → runIncremental → STDIO loop
 ├── db/
 │   ├── Database.java            # Jdbi setup, WAL pragma, DDL, ConstructorMapper registration
@@ -11,7 +11,7 @@ com.example.msrmcp
 │   │                            # + findLatestHash + count
 │   ├── FileDao.java             # files lookup table: insertBatch + findByPaths → FileRecord(fileId, path)
 │   ├── FileChangeDao.java       # insertBatch(FileChangeIdRecord) + query methods JOIN files+commits
-│   │                            # + findDistinctPaths (used by LocCounter.count())
+│   │                            # + findDistinctPaths + findStaleFiles + findTopChurn + findTopChangedFiles
 │   ├── FileMetricsDao.java      # upsertBatch(FileMetricsIdRecord) + findByPaths JOIN files + count
 │   └── FileCouplingDao.java     # upsertBatch(FileCouplingIdRecord, ON CONFLICT accumulate)
 │                                # + findTopCoupled/Since/ForFile/ForFileSince JOIN files + deleteAll
@@ -43,7 +43,7 @@ com.example.msrmcp
 │   ├── GetBusFactorTool.java          # dominanceRatio = top author commits / total; CommitDao.findBusFactorFiles
 │   ├── GetOwnershipTool.java          # dominant author per file; ownershipBy=commits|lines; CommitDao.findOwnershipByCommits/Lines
 │   ├── GetChurnTool.java              # top files by lines added+deleted; FileChangeDao.findTopChurn
-│   ├── GetSummaryTool.java            # now also returns uniqueAuthors, topAuthors, languageDistribution
+│   ├── GetSummaryTool.java            # returns uniqueAuthors, topAuthors, languageDistribution
 │   ├── GetStaleFilesTool.java         # files not changed in N days × complexity score; FileChangeDao.findStaleFiles
 │   └── RefreshIndexTool.java
 ├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
@@ -153,7 +153,7 @@ java -jar /path/to/msr-mcp-server.jar
 ### Git indexing
 - Default branch: `refs/heads/main` → `refs/heads/master` → `HEAD`
 - Root commit (no parent): `EmptyTreeIterator` as old-tree side of `DiffFormatter.scan()`
-- Walk direction: **oldest-first** (`RevSort.REVERSE`) — required for correct rename handling
+- Walk direction: **oldest-first** (`RevSort.REVERSE`) — required for correct co-change semantics (pairs must be recorded in chronological order)
 - Batch size: 500 commits flushed at once
 - co-change map key: `"fileA\0fileB"` (fileA < fileB lexicographic)
 - Coupling ratio formula: `co_changes / MIN(total_changes_a, total_changes_b)`
