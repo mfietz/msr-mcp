@@ -24,9 +24,10 @@ public final class Database {
                 author_email TEXT,
                 author_name  TEXT
             );
-            CREATE INDEX IF NOT EXISTS idx_commits_author_date  ON commits(author_date);
-            CREATE INDEX IF NOT EXISTS idx_commits_jira_slug    ON commits(jira_slug) WHERE jira_slug IS NOT NULL;
-            CREATE INDEX IF NOT EXISTS idx_commits_author_email ON commits(author_email);
+            CREATE INDEX IF NOT EXISTS idx_commits_author_date        ON commits(author_date);
+            CREATE INDEX IF NOT EXISTS idx_commits_jira_slug          ON commits(jira_slug) WHERE jira_slug IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_commits_author_email       ON commits(author_email);
+            CREATE INDEX IF NOT EXISTS idx_commits_commitid_authordate ON commits(commit_id, author_date);
 
             CREATE TABLE IF NOT EXISTS files (
                 file_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
