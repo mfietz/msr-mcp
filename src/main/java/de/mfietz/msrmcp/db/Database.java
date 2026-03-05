@@ -89,6 +89,7 @@ public final class Database {
         jdbi.registerRowMapper(ConstructorMapper.factory(CommitDao.AuthorRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(CommitDao.BusFactorRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(CommitDao.OwnershipRow.class));
+        jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeDao.StaleRow.class));
 
         // WAL mode for better concurrent read performance
         jdbi.useHandle(h -> h.execute("PRAGMA journal_mode=WAL"));
