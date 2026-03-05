@@ -72,6 +72,26 @@ cd /some/git/repo
 java -jar /path/to/msr-mcp-server.jar
 ```
 
+## CI/CD
+
+Two workflows in `.github/workflows/`:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | Every push / PR | `mvn spotless:check` → `mvn verify` (compile + test + package) |
+| `release.yml` | Push `v*` tag or manual dispatch | `mvn package -DskipTests` → GitHub Release with fat JAR |
+
+**Local equivalents of CI gates:**
+
+```bash
+mvn spotless:check          # mirrors "Check formatting" step
+mvn verify -q               # mirrors "Build and test" step (compile + test + package)
+```
+
+Run both before pushing to avoid CI failures. `mvn spotless:apply` fixes formatting in-place if `spotless:check` fails.
+
+**Releasing:** push a `vX.Y.Z` tag or trigger `release.yml` manually with the tag name. The fat JAR (`target/msr-mcp-server.jar`) is attached to the GitHub Release automatically.
+
 ## Code style
 
 Formatter: **google-java-format 1.28.0 (AOSP style — 4-space indent)** via Spotless.

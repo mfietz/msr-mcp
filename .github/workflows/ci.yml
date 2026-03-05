@@ -25,5 +25,8 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
+      - name: Check formatting
+        run: mvn spotless:check -q --no-transfer-progress
+
       - name: Build and test
         run: mvn verify -q --no-transfer-progress
