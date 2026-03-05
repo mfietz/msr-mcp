@@ -19,12 +19,10 @@ com.example.msrmcp
 │   ├── Indexer.java             # runFull(): clear coupling → GitWalker → LocCounter → PmdRunner → deleteStaleMetrics
 │   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd + gone-path cleanup
 │   ├── GitWalker.java           # RevWalk on main/master/HEAD; WalkResult(commitsProcessed,changedPaths)
-│   │                            # RevSort.REVERSE → oldest-first walk for correct rename handling
+│   │                            # RevSort.REVERSE → oldest-first walk (chronological order for co-change semantics)
 │   │                            # walk(stopAtHash) uses markUninteresting for incremental boundary
 │   │                            # EmptyTreeIterator for root commits (no parent)
 │   │                            # flush() resolves paths→IDs + hashes→IDs before insert
-│   │                            # applyRenameInMemory(): fixes coChanges/totalChanges maps on RENAME diff
-│   │                            # mergeRenames(): after walk, merges file_changes old→new file_id, removes old files row
 │   ├── LocCounter.java          # Language-agnostic LOC counter; skips binaries via null-byte detection
 │   │                            # count() for full, count(Set<String>) for incremental
 │   │                            # resolves paths→IDs via FileDao before upsert
@@ -182,7 +180,7 @@ java -jar /path/to/msr-mcp-server.jar
   - Phase 2: retrieve futures in chronological order, update maps sequentially
 - `CommitDiff` / `EntryData` private records carry only plain Java data across threads
 - Pool + formatters wrapped in `try/finally` for cleanup on exception path
-- Rename tracking and co-change semantics unchanged (Phase 2 is sequential)
+- Co-change map updates are sequential (Phase 2) to preserve chronological order
 
 ### Temporal coupling `since` routing
 - No `sinceEpochMs`: fast path via pre-aggregated `file_coupling` table
@@ -227,7 +225,7 @@ c=Counter(frames)
 
 DB state mid-run: `sqlite3 /path/to/.msr/msr.db "SELECT COUNT(*) FROM commits; SELECT COUNT(*) FROM file_changes;"`
 
-**Known hotspot (2026-03):** `String.split("\0",2)` in `applyRenameInMemory` + `flushCoupling` — O(pairs × renames). Fix: defer rename remapping to `mergeRenames()` + use `record PairKey` instead of string keys.
+**Remaining hotspot (2026-03):** JGit diff computation (`RawText.isBinary`, `MyersDiff`) — inherent cost of line-level diffing. Top-frame CPU after rename tracking removal.
 
 ## Known risks / fixed bugs
 
