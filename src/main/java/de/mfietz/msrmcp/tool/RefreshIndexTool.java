@@ -1,22 +1,20 @@
 package de.mfietz.msrmcp.tool;
 
+import static de.mfietz.msrmcp.tool.GetHotspotsTool.error;
+import static de.mfietz.msrmcp.tool.GetHotspotsTool.ok;
+
 import de.mfietz.msrmcp.db.Database;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.model.IndexResult;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.nio.file.Path;
 import java.util.Map;
-
-import static de.mfietz.msrmcp.tool.GetHotspotsTool.error;
-import static de.mfietz.msrmcp.tool.GetHotspotsTool.ok;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code refresh_index}
  *
- * <p>Clears the co-change data and re-indexes the full repository.
- * No arguments required.
+ * <p>Clears the co-change data and re-indexes the full repository. No arguments required.
  */
 public final class RefreshIndexTool {
 
@@ -43,7 +41,8 @@ public final class RefreshIndexTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Clears and rebuilds the full MSR index from git history.
                         Returns an IndexResult with status, counts, and duration.
                         No arguments required.

@@ -1,24 +1,22 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.model.IndexResult;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Gap #5: incremental indexing must clean up file_metrics for files deleted via git commit.
  *
- * <p>Flow: full index of A.java + B.java → git-commit deletion of A.java → incremental index.
- * After incremental index, A.java must no longer appear in file_metrics;
- * B.java must retain its metrics.
+ * <p>Flow: full index of A.java + B.java → git-commit deletion of A.java → incremental index. After
+ * incremental index, A.java must no longer appear in file_metrics; B.java must retain its metrics.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -30,11 +28,14 @@ class IncrementalDeletedFileAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: add files", Map.of(
-                        "src/A.java", "public class A {}\n",
-                        "src/B.java", "public class B {}\n"))
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit(
+                                "feat: add files",
+                                Map.of(
+                                        "src/A.java", "public class A {}\n",
+                                        "src/B.java", "public class B {}\n"))
+                        .build();
 
         Path dbPath = repoDir.resolve(".msr/msr.db");
         Files.createDirectories(dbPath.getParent());

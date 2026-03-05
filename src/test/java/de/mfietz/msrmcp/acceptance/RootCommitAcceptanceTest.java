@@ -1,23 +1,22 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.model.IndexResult;
 import de.mfietz.msrmcp.tool.GetHotspotsTool;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
- * Verifies that a repository with exactly one commit (no parent) is handled
- * correctly. The root-commit / EmptyTreeIterator code path was listed as a
- * medium-severity risk in the design; this test guards against regressions.
+ * Verifies that a repository with exactly one commit (no parent) is handled correctly. The
+ * root-commit / EmptyTreeIterator code path was listed as a medium-severity risk in the design;
+ * this test guards against regressions.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -31,14 +30,17 @@ class RootCommitAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: init", "src/Main.java",
-                        "public class Main { public static void main(String[] a) {} }")
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit(
+                                "feat: init",
+                                "src/Main.java",
+                                "public class Main { public static void main(String[] a) {} }")
+                        .build();
         Files.createDirectories(repoDir.resolve(".msr"));
         db = Database.open(repoDir.resolve(".msr/msr.db"));
-        commitDao      = db.attach(CommitDao.class);
-        fileChangeDao  = db.attach(FileChangeDao.class);
+        commitDao = db.attach(CommitDao.class);
+        fileChangeDao = db.attach(FileChangeDao.class);
         fileMetricsDao = db.attach(FileMetricsDao.class);
     }
 

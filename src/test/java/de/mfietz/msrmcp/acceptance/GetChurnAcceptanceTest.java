@@ -1,27 +1,28 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.tool.GetChurnTool;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Acceptance tests for the get_churn tool.
  *
  * <p>Test repo layout:
+ *
  * <ul>
  *   <li>src/Main.java — 3 commits, each adding many lines
  *   <li>src/Helper.java — 1 commit, minimal content
  * </ul>
+ *
  * Expected: Main.java has higher churn than Helper.java.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -32,15 +33,23 @@ class GetChurnAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: init", Map.of(
-                        "src/Main.java", "public class Main {\n    void a(){}\n    void b(){}\n    void c(){}\n}\n",
-                        "src/Helper.java", "public class Helper {}\n"))
-                .commit("feat: add logic", "src/Main.java",
-                        "public class Main {\n    void a(){}\n    void b(){}\n    void c(){}\n    void d(){}\n    void e(){}\n}\n")
-                .commit("feat: more logic", "src/Main.java",
-                        "public class Main {\n    void a(){}\n    void b(){}\n    void c(){}\n    void d(){}\n    void e(){}\n    void f(){}\n}\n")
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit(
+                                "feat: init",
+                                Map.of(
+                                        "src/Main.java",
+                                                "public class Main {\n    void a(){}\n    void b(){}\n    void c(){}\n}\n",
+                                        "src/Helper.java", "public class Helper {}\n"))
+                        .commit(
+                                "feat: add logic",
+                                "src/Main.java",
+                                "public class Main {\n    void a(){}\n    void b(){}\n    void c(){}\n    void d(){}\n    void e(){}\n}\n")
+                        .commit(
+                                "feat: more logic",
+                                "src/Main.java",
+                                "public class Main {\n    void a(){}\n    void b(){}\n    void c(){}\n    void d(){}\n    void e(){}\n    void f(){}\n}\n")
+                        .build();
 
         Path dbPath = repoDir.resolve(".msr/msr.db");
         java.nio.file.Files.createDirectories(dbPath.getParent());

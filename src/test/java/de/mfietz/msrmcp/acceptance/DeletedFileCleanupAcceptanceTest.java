@@ -1,21 +1,20 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Acceptance tests for stale file_metrics cleanup.
  *
- * <p>After a file is deleted from disk (committed delete), a subsequent full
- * re-index must not leave its entry in file_metrics.
+ * <p>After a file is deleted from disk (committed delete), a subsequent full re-index must not
+ * leave its entry in file_metrics.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DeletedFileCleanupAcceptanceTest {
@@ -25,11 +24,14 @@ class DeletedFileCleanupAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: add files", java.util.Map.of(
-                        "src/Keep.java", "public class Keep {}\n",
-                        "src/Gone.java", "public class Gone {}\n"))
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit(
+                                "feat: add files",
+                                java.util.Map.of(
+                                        "src/Keep.java", "public class Keep {}\n",
+                                        "src/Gone.java", "public class Gone {}\n"))
+                        .build();
 
         // First index — both files get metrics
         Path dbPath = repoDir.resolve(".msr/msr.db");

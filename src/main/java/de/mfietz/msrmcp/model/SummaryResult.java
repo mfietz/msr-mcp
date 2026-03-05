@@ -16,9 +16,10 @@ public record SummaryResult(
         long latestCommitMs,
         List<TopFile> topChangedFiles,
         List<AuthorSummary> topAuthors,
-        List<LangCount> languageDistribution
-) {
+        List<LangCount> languageDistribution) {
     public record TopFile(String filePath, int changeFrequency) {}
+
     public record AuthorSummary(String name, String email, int commits) {}
+
     public record LangCount(String extension, int fileCount) {}
 }

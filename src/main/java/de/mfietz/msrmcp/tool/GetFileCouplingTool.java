@@ -3,18 +3,18 @@ package de.mfietz.msrmcp.tool;
 import de.mfietz.msrmcp.db.FileCouplingDao;
 import de.mfietz.msrmcp.db.FileCouplingDao.PartnerRow;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.List;
 import java.util.Map;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_file_coupling}
  *
- * <p>Returns the files most temporally coupled to a specific file, ranked by
- * coupling ratio. Useful for understanding blast radius and hidden dependencies.
+ * <p>Returns the files most temporally coupled to a specific file, ranked by coupling ratio. Useful
+ * for understanding blast radius and hidden dependencies.
  *
  * <p>Arguments:
+ *
  * <ul>
  *   <li>{@code filePath} (string, required) — repo-relative path, e.g. {@code "src/Main.java"}
  *   <li>{@code topN} (int, default 10) — number of partner files to return
@@ -34,18 +34,20 @@ public final class GetFileCouplingTool {
 
     public CallToolResult handle(Map<String, Object> args) {
         try {
-            String filePath   = GetHotspotsTool.stringArg(args, "filePath", null);
+            String filePath = GetHotspotsTool.stringArg(args, "filePath", null);
             if (filePath == null || filePath.isBlank()) {
                 return GetHotspotsTool.error("filePath is required");
             }
-            int    topN       = GetHotspotsTool.intArg(args, "topN", 10);
+            int topN = GetHotspotsTool.intArg(args, "topN", 10);
             double minCoupling = doubleArg(args, "minCoupling", 0.1);
 
             Long sinceEpochMs = GetHotspotsTool.longArg(args, "sinceEpochMs");
 
-            List<PartnerRow> rows = sinceEpochMs != null
-                    ? fileCouplingDao.findTopCoupledForFileSince(filePath, sinceEpochMs, minCoupling, topN)
-                    : fileCouplingDao.findTopCoupledForFile(filePath, minCoupling, topN);
+            List<PartnerRow> rows =
+                    sinceEpochMs != null
+                            ? fileCouplingDao.findTopCoupledForFileSince(
+                                    filePath, sinceEpochMs, minCoupling, topN)
+                            : fileCouplingDao.findTopCoupledForFile(filePath, minCoupling, topN);
 
             return GetHotspotsTool.ok(MAPPER.writeValueAsString(rows));
         } catch (Exception e) {
@@ -56,7 +58,8 @@ public final class GetFileCouplingTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns the files most frequently changed together with the given file,
                         ranked by coupling ratio. Useful for impact analysis and understanding
                         hidden dependencies.

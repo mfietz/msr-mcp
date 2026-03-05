@@ -1,20 +1,19 @@
 package de.mfietz.msrmcp.tool;
 
+import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+
 import de.mfietz.msrmcp.db.FileChangeDao;
 import de.mfietz.msrmcp.db.FileChangeDao.ChurnRow;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.List;
 import java.util.Map;
-
-import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_churn}
  *
- * <p>Returns files ranked by total churn (lines added + lines deleted).
- * Useful for identifying files with high edit volume regardless of complexity.
+ * <p>Returns files ranked by total churn (lines added + lines deleted). Useful for identifying
+ * files with high edit volume regardless of complexity.
  */
 public final class GetChurnTool {
 
@@ -35,7 +34,8 @@ public final class GetChurnTool {
             String extPattern = "%" + ext;
             String pathFilter = stringArg(args, "pathFilter", "%");
 
-            List<ChurnRow> rows = fileChangeDao.findTopChurn(sinceEpochMs, extPattern, pathFilter, topN);
+            List<ChurnRow> rows =
+                    fileChangeDao.findTopChurn(sinceEpochMs, extPattern, pathFilter, topN);
             return ok(MAPPER.writeValueAsString(rows));
         } catch (Exception e) {
             return error("get_churn failed: " + e.getMessage());
@@ -45,7 +45,8 @@ public final class GetChurnTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns the top-N files ranked by total churn (lines added + lines deleted).
                         Useful for finding files with the most edit volume.
                         Optionally filter by time window (sinceEpochMs) and file extension.

@@ -1,20 +1,20 @@
 package de.mfietz.msrmcp.db;
 
 import de.mfietz.msrmcp.model.*;
+import java.nio.file.Path;
+import java.util.List;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.mapper.reflect.ConstructorMapper;
 import org.jdbi.v3.sqlobject.SqlObjectPlugin;
 
-import java.nio.file.Path;
-import java.util.List;
-
 /**
- * Opens (or creates) the SQLite database, applies pragmas and DDL,
- * and exposes a pre-configured Jdbi instance.
+ * Opens (or creates) the SQLite database, applies pragmas and DDL, and exposes a pre-configured
+ * Jdbi instance.
  */
 public final class Database {
 
-    private static final String DDL = """
+    private static final String DDL =
+            """
             CREATE TABLE IF NOT EXISTS commits (
                 commit_id    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 hash         TEXT    NOT NULL UNIQUE,
@@ -82,7 +82,8 @@ public final class Database {
         jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileMetricsRecord.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingRecord.class));
-        jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeDao.FileChangeFrequencyRow.class));
+        jdbi.registerRowMapper(
+                ConstructorMapper.factory(FileChangeDao.FileChangeFrequencyRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileChangeDao.ChurnRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.CouplingRow.class));
         jdbi.registerRowMapper(ConstructorMapper.factory(FileCouplingDao.PartnerRow.class));
@@ -95,25 +96,35 @@ public final class Database {
         jdbi.useHandle(h -> h.execute("PRAGMA journal_mode=WAL"));
 
         // Migrations for existing databases (ALTER TABLE ignores duplicate columns via try-catch)
-        jdbi.useHandle(h -> {
-            for (String col : List.of("author_email TEXT", "author_name TEXT")) {
-                try { h.execute("ALTER TABLE commits ADD COLUMN " + col); } catch (Exception ignored) {}
-            }
-            for (String col : List.of("lines_added INTEGER NOT NULL DEFAULT 0",
-                                      "lines_deleted INTEGER NOT NULL DEFAULT 0")) {
-                try { h.execute("ALTER TABLE file_changes ADD COLUMN " + col); } catch (Exception ignored) {}
-            }
-        });
+        jdbi.useHandle(
+                h -> {
+                    for (String col : List.of("author_email TEXT", "author_name TEXT")) {
+                        try {
+                            h.execute("ALTER TABLE commits ADD COLUMN " + col);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    for (String col :
+                            List.of(
+                                    "lines_added INTEGER NOT NULL DEFAULT 0",
+                                    "lines_deleted INTEGER NOT NULL DEFAULT 0")) {
+                        try {
+                            h.execute("ALTER TABLE file_changes ADD COLUMN " + col);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                });
 
         // Apply schema (idempotent)
-        jdbi.useHandle(h -> {
-            for (String stmt : DDL.split(";")) {
-                String sql = stmt.strip();
-                if (!sql.isBlank()) {
-                    h.execute(sql);
-                }
-            }
-        });
+        jdbi.useHandle(
+                h -> {
+                    for (String stmt : DDL.split(";")) {
+                        String sql = stmt.strip();
+                        if (!sql.isBlank()) {
+                            h.execute(sql);
+                        }
+                    }
+                });
 
         return new Database(jdbi);
     }
@@ -127,43 +138,47 @@ public final class Database {
     }
 
     /**
-     * Drops the 8 analytical (query-only) indexes to speed up bulk inserts.
-     * Call before a full re-index; restore with {@link #createAnalyticalIndexes()} after.
-     * Safe to call multiple times (uses IF EXISTS).
+     * Drops the 8 analytical (query-only) indexes to speed up bulk inserts. Call before a full
+     * re-index; restore with {@link #createAnalyticalIndexes()} after. Safe to call multiple times
+     * (uses IF EXISTS).
      */
     public void dropAnalyticalIndexes() {
-        jdbi.useTransaction(h -> {
-            for (String name : List.of(
-                    "idx_commits_author_date",
-                    "idx_commits_jira_slug",
-                    "idx_commits_author_email",
-                    "idx_commits_commitid_authordate",
-                    "idx_file_changes_commitid",
-                    "idx_file_changes_fileid_commitid",
-                    "idx_coupling_a",
-                    "idx_coupling_b")) {
-                h.execute("DROP INDEX IF EXISTS " + name);
-            }
-        });
+        jdbi.useTransaction(
+                h -> {
+                    for (String name :
+                            List.of(
+                                    "idx_commits_author_date",
+                                    "idx_commits_jira_slug",
+                                    "idx_commits_author_email",
+                                    "idx_commits_commitid_authordate",
+                                    "idx_file_changes_commitid",
+                                    "idx_file_changes_fileid_commitid",
+                                    "idx_coupling_a",
+                                    "idx_coupling_b")) {
+                        h.execute("DROP INDEX IF EXISTS " + name);
+                    }
+                });
     }
 
     /**
-     * Recreates the 8 analytical indexes dropped by {@link #dropAnalyticalIndexes()}.
-     * Uses IF NOT EXISTS so it is safe to call even if indexes were never dropped.
+     * Recreates the 8 analytical indexes dropped by {@link #dropAnalyticalIndexes()}. Uses IF NOT
+     * EXISTS so it is safe to call even if indexes were never dropped.
      */
     public void createAnalyticalIndexes() {
-        jdbi.useTransaction(h -> {
-            for (String sql : List.of(
-                    "CREATE INDEX IF NOT EXISTS idx_commits_author_date ON commits(author_date)",
-                    "CREATE INDEX IF NOT EXISTS idx_commits_jira_slug ON commits(jira_slug) WHERE jira_slug IS NOT NULL",
-                    "CREATE INDEX IF NOT EXISTS idx_commits_author_email ON commits(author_email)",
-                    "CREATE INDEX IF NOT EXISTS idx_commits_commitid_authordate ON commits(commit_id, author_date)",
-                    "CREATE INDEX IF NOT EXISTS idx_file_changes_commitid ON file_changes(commit_id)",
-                    "CREATE INDEX IF NOT EXISTS idx_file_changes_fileid_commitid ON file_changes(file_id, commit_id)",
-                    "CREATE INDEX IF NOT EXISTS idx_coupling_a ON file_coupling(file_a_id)",
-                    "CREATE INDEX IF NOT EXISTS idx_coupling_b ON file_coupling(file_b_id)")) {
-                h.execute(sql);
-            }
-        });
+        jdbi.useTransaction(
+                h -> {
+                    for (String sql :
+                            List.of(
+                                    "CREATE INDEX IF NOT EXISTS idx_commits_author_date ON commits(author_date)",
+                                    "CREATE INDEX IF NOT EXISTS idx_commits_jira_slug ON commits(jira_slug) WHERE jira_slug IS NOT NULL",
+                                    "CREATE INDEX IF NOT EXISTS idx_commits_author_email ON commits(author_email)",
+                                    "CREATE INDEX IF NOT EXISTS idx_commits_commitid_authordate ON commits(commit_id, author_date)",
+                                    "CREATE INDEX IF NOT EXISTS idx_file_changes_commitid ON file_changes(commit_id)",
+                                    "CREATE INDEX IF NOT EXISTS idx_file_changes_fileid_commitid ON file_changes(file_id, commit_id)",
+                                    "CREATE INDEX IF NOT EXISTS idx_coupling_a ON file_coupling(file_a_id)",
+                                    "CREATE INDEX IF NOT EXISTS idx_coupling_b ON file_coupling(file_b_id)")) {
+                        h.execute(sql);
+                    }
+                });
     }
 }

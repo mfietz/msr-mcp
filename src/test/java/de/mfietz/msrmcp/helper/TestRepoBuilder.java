@@ -1,9 +1,5 @@
 package de.mfietz.msrmcp.helper;
 
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.lib.StoredConfig;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,12 +8,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.StoredConfig;
 
 /**
- * Builds an in-process temporary git repository with deterministic commits
- * for use in acceptance tests.
+ * Builds an in-process temporary git repository with deterministic commits for use in acceptance
+ * tests.
  *
  * <p>Usage:
+ *
  * <pre>{@code
  * Path repo = new TestRepoBuilder()
  *     .commit("feat: init", Map.of("src/Main.java", "public class Main {}"))
@@ -27,8 +27,12 @@ import java.util.Map;
  */
 public final class TestRepoBuilder {
 
-    private record CommitSpec(String message, Map<String, String> files, Instant when,
-                              String authorName, String authorEmail) {}
+    private record CommitSpec(
+            String message,
+            Map<String, String> files,
+            Instant when,
+            String authorName,
+            String authorEmail) {}
 
     private final List<CommitSpec> commits = new ArrayList<>();
     private long baseEpochSec = Instant.parse("2024-01-01T00:00:00Z").getEpochSecond();
@@ -40,30 +44,44 @@ public final class TestRepoBuilder {
 
     /** Add a commit touching multiple files (map: relative-path → content). */
     public TestRepoBuilder commit(String message, Map<String, String> files) {
-        commits.add(new CommitSpec(message, new LinkedHashMap<>(files),
-                Instant.ofEpochSecond(baseEpochSec), "Test Author", "test@example.com"));
+        commits.add(
+                new CommitSpec(
+                        message,
+                        new LinkedHashMap<>(files),
+                        Instant.ofEpochSecond(baseEpochSec),
+                        "Test Author",
+                        "test@example.com"));
         baseEpochSec += 3600; // 1 hour between commits
         return this;
     }
 
     /** Add a commit with a single file and explicit author. */
-    public TestRepoBuilder commit(String message, String filePath, String content,
-                                  String authorName, String authorEmail) {
+    public TestRepoBuilder commit(
+            String message,
+            String filePath,
+            String content,
+            String authorName,
+            String authorEmail) {
         return commit(message, Map.of(filePath, content), authorName, authorEmail);
     }
 
     /** Add a commit touching multiple files with an explicit author. */
-    public TestRepoBuilder commit(String message, Map<String, String> files,
-                                  String authorName, String authorEmail) {
-        commits.add(new CommitSpec(message, new LinkedHashMap<>(files),
-                Instant.ofEpochSecond(baseEpochSec), authorName, authorEmail));
+    public TestRepoBuilder commit(
+            String message, Map<String, String> files, String authorName, String authorEmail) {
+        commits.add(
+                new CommitSpec(
+                        message,
+                        new LinkedHashMap<>(files),
+                        Instant.ofEpochSecond(baseEpochSec),
+                        authorName,
+                        authorEmail));
         baseEpochSec += 3600;
         return this;
     }
 
     /**
-     * Creates the git repository in a temp directory and returns its root path.
-     * Caller is responsible for deleting it after the test.
+     * Creates the git repository in a temp directory and returns its root path. Caller is
+     * responsible for deleting it after the test.
      */
     public Path build() throws Exception {
         Path dir = Files.createTempDirectory("msr-test-");
@@ -83,11 +101,7 @@ public final class TestRepoBuilder {
             }
             PersonIdent author = new PersonIdent(spec.authorName(), spec.authorEmail());
             PersonIdent timed = new PersonIdent(author, spec.when());
-            git.commit()
-                    .setMessage(spec.message())
-                    .setAuthor(timed)
-                    .setCommitter(timed)
-                    .call();
+            git.commit().setMessage(spec.message()).setAuthor(timed).setCommitter(timed).call();
         }
 
         git.close();
@@ -95,8 +109,8 @@ public final class TestRepoBuilder {
     }
 
     /**
-     * Appends a single commit to an already-built repo on disk.
-     * Used by incremental-indexing tests to simulate a {@code git pull}.
+     * Appends a single commit to an already-built repo on disk. Used by incremental-indexing tests
+     * to simulate a {@code git pull}.
      */
     public static void appendCommit(Path repoDir, String message, String filePath, String content)
             throws Exception {
@@ -117,7 +131,8 @@ public final class TestRepoBuilder {
     }
 
     /** Commits a deletion of an existing tracked file. */
-    public static void appendDeletion(Path repoDir, String message, String filePath) throws Exception {
+    public static void appendDeletion(Path repoDir, String message, String filePath)
+            throws Exception {
         try (Git git = Git.open(repoDir.toFile())) {
             git.rm().addFilepattern(filePath).call();
             PersonIdent author = new PersonIdent("Test Author", "test@example.com");

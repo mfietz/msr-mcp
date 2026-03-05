@@ -1,13 +1,20 @@
 package de.mfietz.msrmcp.index;
 
 import de.mfietz.msrmcp.db.CommitDao;
-import de.mfietz.msrmcp.db.FileDao;
-import de.mfietz.msrmcp.db.FileCouplingDao;
 import de.mfietz.msrmcp.db.FileChangeDao;
 import de.mfietz.msrmcp.db.FileChangeDao.FileChangeIdRecord;
+import de.mfietz.msrmcp.db.FileCouplingDao;
 import de.mfietz.msrmcp.db.FileCouplingDao.FileCouplingIdRecord;
+import de.mfietz.msrmcp.db.FileDao;
 import de.mfietz.msrmcp.model.CommitRecord;
 import de.mfietz.msrmcp.util.JiraSlugExtractor;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
@@ -17,27 +24,22 @@ import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevSort;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
+import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-
 /**
- * Walks the default branch (main → master → HEAD) of a git repository,
- * inserts commits and file-change records into the DB, and accumulates
- * in-memory co-change data that is flushed to file_coupling.
+ * Walks the default branch (main → master → HEAD) of a git repository, inserts commits and
+ * file-change records into the DB, and accumulates in-memory co-change data that is flushed to
+ * file_coupling.
  */
 final class GitWalker {
 
     private static final int BATCH_SIZE = 500;
-    /** Commits touching more files than this are excluded from coupling (bulk refactors, merges). */
+
+    /**
+     * Commits touching more files than this are excluded from coupling (bulk refactors, merges).
+     */
     static final int MAX_PATHS_FOR_COUPLING = 50;
 
     private final Path repoDir;
@@ -46,9 +48,12 @@ final class GitWalker {
     private final FileCouplingDao fileCouplingDao;
     private final FileDao fileDao;
 
-    GitWalker(Path repoDir, CommitDao commitDao,
-              FileChangeDao fileChangeDao, FileCouplingDao fileCouplingDao,
-              FileDao fileDao) {
+    GitWalker(
+            Path repoDir,
+            CommitDao commitDao,
+            FileChangeDao fileChangeDao,
+            FileCouplingDao fileCouplingDao,
+            FileDao fileDao) {
         this.repoDir = repoDir;
         this.commitDao = commitDao;
         this.fileChangeDao = fileChangeDao;
@@ -59,23 +64,23 @@ final class GitWalker {
     record WalkResult(int commitsProcessed, Set<String> changedPaths) {}
 
     /**
-     * Full walk — processes every commit reachable from HEAD.
-     * Caller is responsible for clearing {@code file_coupling} beforehand.
+     * Full walk — processes every commit reachable from HEAD. Caller is responsible for clearing
+     * {@code file_coupling} beforehand.
      */
     WalkResult walk() throws IOException {
         return walk(null);
     }
 
     /**
-     * Incremental walk — only processes commits that are not ancestors of
-     * {@code stopAtHash}. Pass {@code null} for a full walk.
+     * Incremental walk — only processes commits that are not ancestors of {@code stopAtHash}. Pass
+     * {@code null} for a full walk.
      *
-     * <p>Uses JGit {@code markUninteresting} so the RevWalk stops naturally
-     * at the already-indexed boundary without scanning the entire history.
+     * <p>Uses JGit {@code markUninteresting} so the RevWalk stops naturally at the already-indexed
+     * boundary without scanning the entire history.
      */
     WalkResult walk(String stopAtHash) throws IOException {
         try (Git git = Git.open(repoDir.toFile());
-             RevWalk revWalk = new RevWalk(git.getRepository())) {
+                RevWalk revWalk = new RevWalk(git.getRepository())) {
 
             Repository repo = git.getRepository();
 
@@ -97,20 +102,22 @@ final class GitWalker {
             int nThreads = Runtime.getRuntime().availableProcessors();
             ExecutorService pool = Executors.newFixedThreadPool(nThreads);
             List<DiffFormatter> formatters = Collections.synchronizedList(new ArrayList<>());
-            ThreadLocal<DiffFormatter> dfLocal = ThreadLocal.withInitial(() -> {
-                DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
-                df.setRepository(repo);
-                df.setDiffComparator(RawTextComparator.DEFAULT);
-                formatters.add(df);
-                return df;
-            });
+            ThreadLocal<DiffFormatter> dfLocal =
+                    ThreadLocal.withInitial(
+                            () -> {
+                                DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
+                                df.setRepository(repo);
+                                df.setDiffComparator(RawTextComparator.DEFAULT);
+                                formatters.add(df);
+                                return df;
+                            });
 
-            Map<String, int[]> coChanges    = new HashMap<>();
+            Map<String, int[]> coChanges = new HashMap<>();
             Map<String, int[]> totalChanges = new HashMap<>();
-            Set<String> allChangedPaths     = new HashSet<>();
+            Set<String> allChangedPaths = new HashSet<>();
 
             List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
-            List<ChangeEntry>  changeBatch  = new ArrayList<>(BATCH_SIZE * 4);
+            List<ChangeEntry> changeBatch = new ArrayList<>(BATCH_SIZE * 4);
             int processed = 0;
 
             List<RevCommit> window = new ArrayList<>(BATCH_SIZE);
@@ -118,16 +125,32 @@ final class GitWalker {
                 for (RevCommit commit : revWalk) {
                     window.add(commit);
                     if (window.size() == BATCH_SIZE) {
-                        processWindow(window, repo, dfLocal, pool, commitBatch, changeBatch,
-                                      coChanges, totalChanges, allChangedPaths);
+                        processWindow(
+                                window,
+                                repo,
+                                dfLocal,
+                                pool,
+                                commitBatch,
+                                changeBatch,
+                                coChanges,
+                                totalChanges,
+                                allChangedPaths);
                         processed += window.size();
                         window.clear();
                         System.err.printf("MSR:   %,d commits processed...%n", processed);
                     }
                 }
                 if (!window.isEmpty()) {
-                    processWindow(window, repo, dfLocal, pool, commitBatch, changeBatch,
-                                  coChanges, totalChanges, allChangedPaths);
+                    processWindow(
+                            window,
+                            repo,
+                            dfLocal,
+                            pool,
+                            commitBatch,
+                            changeBatch,
+                            coChanges,
+                            totalChanges,
+                            allChangedPaths);
                     processed += window.size();
                 }
             } finally {
@@ -147,8 +170,8 @@ final class GitWalker {
         return id;
     }
 
-    private static List<DiffEntry> getDiffs(Repository repo, RevCommit commit,
-                                             DiffFormatter df) throws IOException {
+    private static List<DiffEntry> getDiffs(Repository repo, RevCommit commit, DiffFormatter df)
+            throws IOException {
         if (commit.getParentCount() == 0) {
             try (ObjectReader reader = repo.newObjectReader()) {
                 CanonicalTreeParser newTree = new CanonicalTreeParser();
@@ -171,7 +194,11 @@ final class GitWalker {
             for (int j = i + 1; j < n; j++) {
                 String a = paths.get(i);
                 String b = paths.get(j);
-                if (a.compareTo(b) > 0) { String tmp = a; a = b; b = tmp; }
+                if (a.compareTo(b) > 0) {
+                    String tmp = a;
+                    a = b;
+                    b = tmp;
+                }
                 coChanges.computeIfAbsent(a + "\0" + b, k -> new int[1])[0]++;
             }
         }
@@ -181,17 +208,21 @@ final class GitWalker {
         if (!commitBatch.isEmpty()) commitDao.insertBatch(commitBatch);
         if (!changeBatch.isEmpty()) {
             // Resolve commit hashes → IDs
-            Map<String, Long> hashToId = resolveHashes(
-                    changeBatch.stream().map(ChangeEntry::hash).distinct().toList());
+            Map<String, Long> hashToId =
+                    resolveHashes(changeBatch.stream().map(ChangeEntry::hash).distinct().toList());
 
             // Resolve file paths → IDs
-            Map<String, Long> pathToId = resolvePaths(
-                    changeBatch.stream().map(ChangeEntry::path).distinct().toList());
+            Map<String, Long> pathToId =
+                    resolvePaths(changeBatch.stream().map(ChangeEntry::path).distinct().toList());
 
             List<FileChangeIdRecord> idRecords = new ArrayList<>(changeBatch.size());
             for (ChangeEntry e : changeBatch) {
-                idRecords.add(new FileChangeIdRecord(hashToId.get(e.hash()), pathToId.get(e.path()),
-                        e.linesAdded(), e.linesDeleted()));
+                idRecords.add(
+                        new FileChangeIdRecord(
+                                hashToId.get(e.hash()),
+                                pathToId.get(e.path()),
+                                e.linesAdded(),
+                                e.linesDeleted()));
             }
             fileChangeDao.insertBatch(idRecords);
         }
@@ -216,8 +247,8 @@ final class GitWalker {
             String[] parts = entry.getKey().split("\0", 2);
             String a = parts[0], b = parts[1];
             int co = entry.getValue()[0];
-            int ta = totalChanges.getOrDefault(a, new int[]{0})[0];
-            int tb = totalChanges.getOrDefault(b, new int[]{0})[0];
+            int ta = totalChanges.getOrDefault(a, new int[] {0})[0];
+            int tb = totalChanges.getOrDefault(b, new int[] {0})[0];
 
             long idA = pathToId.get(a);
             long idB = pathToId.get(b);
@@ -231,17 +262,18 @@ final class GitWalker {
 
         int chunkSize = 500;
         for (int i = 0; i < records.size(); i += chunkSize) {
-            fileCouplingDao.upsertBatch(records.subList(i, Math.min(i + chunkSize, records.size())));
+            fileCouplingDao.upsertBatch(
+                    records.subList(i, Math.min(i + chunkSize, records.size())));
         }
     }
 
     /**
-     * Computes the diff for a single commit and returns serialisable data only.
-     * Safe to call from any thread because the caller supplies its own {@code df}.
-     * Exceptions inside individual entry processing are swallowed (best-effort).
+     * Computes the diff for a single commit and returns serialisable data only. Safe to call from
+     * any thread because the caller supplies its own {@code df}. Exceptions inside individual entry
+     * processing are swallowed (best-effort).
      */
-    private static CommitDiff computeCommitDiff(Repository repo, RevCommit commit,
-                                                 DiffFormatter df) {
+    private static CommitDiff computeCommitDiff(
+            Repository repo, RevCommit commit, DiffFormatter df) {
         List<EntryData> entries = new ArrayList<>();
         try {
             for (DiffEntry entry : getDiffs(repo, commit, df)) {
@@ -250,31 +282,36 @@ final class GitWalker {
                 int linesAdded = 0, linesDeleted = 0;
                 try {
                     for (Edit edit : df.toFileHeader(entry).toEditList()) {
-                        linesAdded   += edit.getEndB() - edit.getBeginB();
+                        linesAdded += edit.getEndB() - edit.getBeginB();
                         linesDeleted += edit.getEndA() - edit.getBeginA();
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 entries.add(new EntryData(path, linesAdded, linesDeleted));
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         return new CommitDiff(commit, entries);
     }
 
     /**
      * Two-phase batch processor.
      *
-     * <p>Phase 1: submits one diff-computation task per commit to {@code pool};
-     * each task uses a thread-local {@code DiffFormatter} (JGit objects are not
-     * thread-safe).
+     * <p>Phase 1: submits one diff-computation task per commit to {@code pool}; each task uses a
+     * thread-local {@code DiffFormatter} (JGit objects are not thread-safe).
      *
-     * <p>Phase 2: retrieves futures in submission order (= chronological order)
-     * and updates all in-memory maps sequentially — same semantics as the old loop.
+     * <p>Phase 2: retrieves futures in submission order (= chronological order) and updates all
+     * in-memory maps sequentially — same semantics as the old loop.
      */
     private void processWindow(
-            List<RevCommit> window, Repository repo,
-            ThreadLocal<DiffFormatter> dfLocal, ExecutorService pool,
-            List<CommitRecord> commitBatch, List<ChangeEntry> changeBatch,
-            Map<String, int[]> coChanges, Map<String, int[]> totalChanges,
+            List<RevCommit> window,
+            Repository repo,
+            ThreadLocal<DiffFormatter> dfLocal,
+            ExecutorService pool,
+            List<CommitRecord> commitBatch,
+            List<ChangeEntry> changeBatch,
+            Map<String, int[]> coChanges,
+            Map<String, int[]> totalChanges,
             Set<String> allChangedPaths) {
 
         // Phase 1 — parallel diff computation
@@ -294,14 +331,16 @@ final class GitWalker {
             }
 
             RevCommit commit = cd.commit();
-            String hash        = commit.getName();
-            long authorDate    = commit.getAuthorIdent().getWhen().getTime();
-            String firstLine   = commit.getShortMessage();
-            String jiraSlug    = JiraSlugExtractor.extract(firstLine);
+            String hash = commit.getName();
+            long authorDate = commit.getAuthorIdent().getWhen().getTime();
+            String firstLine = commit.getShortMessage();
+            String jiraSlug = JiraSlugExtractor.extract(firstLine);
             String authorEmail = commit.getAuthorIdent().getEmailAddress();
-            String authorName  = commit.getAuthorIdent().getName();
+            String authorName = commit.getAuthorIdent().getName();
 
-            commitBatch.add(new CommitRecord(hash, authorDate, firstLine, jiraSlug, authorEmail, authorName));
+            commitBatch.add(
+                    new CommitRecord(
+                            hash, authorDate, firstLine, jiraSlug, authorEmail, authorName));
 
             List<String> changedPaths = new ArrayList<>(cd.entries().size());
             for (EntryData e : cd.entries()) {
@@ -320,8 +359,8 @@ final class GitWalker {
     }
 
     /**
-     * Looks up commit hashes and returns a hash→commitId map.
-     * Commits must already be inserted. Chunks to respect SQLite limits.
+     * Looks up commit hashes and returns a hash→commitId map. Commits must already be inserted.
+     * Chunks to respect SQLite limits.
      */
     private Map<String, Long> resolveHashes(List<String> hashes) {
         if (hashes.isEmpty()) return Map.of();
@@ -338,8 +377,8 @@ final class GitWalker {
     }
 
     /**
-     * Inserts paths into the files table (INSERT OR IGNORE) and returns
-     * a path→fileId map. Chunks into groups of 999 to respect SQLite limits.
+     * Inserts paths into the files table (INSERT OR IGNORE) and returns a path→fileId map. Chunks
+     * into groups of 999 to respect SQLite limits.
      */
     private Map<String, Long> resolvePaths(List<String> paths) {
         if (paths.isEmpty()) return Map.of();

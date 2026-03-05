@@ -4,7 +4,6 @@ import de.mfietz.msrmcp.db.FileChangeDao;
 import de.mfietz.msrmcp.db.FileDao;
 import de.mfietz.msrmcp.db.FileMetricsDao;
 import de.mfietz.msrmcp.db.FileMetricsDao.FileMetricsIdRecord;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -15,12 +14,12 @@ import java.util.*;
 import java.util.logging.Logger;
 
 /**
- * Counts lines of code for every file tracked in git history that still exists
- * on disk. Language-agnostic — works for any text file. Binary files (those that
- * throw IOException or contain a null byte) are silently skipped.
+ * Counts lines of code for every file tracked in git history that still exists on disk.
+ * Language-agnostic — works for any text file. Binary files (those that throw IOException or
+ * contain a null byte) are silently skipped.
  *
- * <p>Must run <em>before</em> {@link PmdRunner} so that PmdRunner can overwrite
- * Java entries with the more accurate PMD-derived complexity metrics.
+ * <p>Must run <em>before</em> {@link PmdRunner} so that PmdRunner can overwrite Java entries with
+ * the more accurate PMD-derived complexity metrics.
  */
 final class LocCounter {
 
@@ -31,7 +30,11 @@ final class LocCounter {
     private final FileMetricsDao fileMetricsDao;
     private final FileDao fileDao;
 
-    LocCounter(Path repoDir, FileChangeDao fileChangeDao, FileMetricsDao fileMetricsDao, FileDao fileDao) {
+    LocCounter(
+            Path repoDir,
+            FileChangeDao fileChangeDao,
+            FileMetricsDao fileMetricsDao,
+            FileDao fileDao) {
         this.repoDir = repoDir;
         this.fileChangeDao = fileChangeDao;
         this.fileMetricsDao = fileMetricsDao;
@@ -56,7 +59,7 @@ final class LocCounter {
             try {
                 int loc = countLines(file);
                 countedPaths.add(relPath);
-                countedMetrics.add(new int[]{loc});
+                countedMetrics.add(new int[] {loc});
             } catch (IOException e) {
                 // Binary or unreadable file — skip silently
             }
@@ -85,7 +88,8 @@ final class LocCounter {
         }
         Map<String, Long> result = new HashMap<>();
         for (int i = 0; i < paths.size(); i += chunkSize) {
-            for (FileDao.FileRecord r : fileDao.findByPaths(paths.subList(i, Math.min(i + chunkSize, paths.size())))) {
+            for (FileDao.FileRecord r :
+                    fileDao.findByPaths(paths.subList(i, Math.min(i + chunkSize, paths.size())))) {
                 result.put(r.path(), r.fileId());
             }
         }

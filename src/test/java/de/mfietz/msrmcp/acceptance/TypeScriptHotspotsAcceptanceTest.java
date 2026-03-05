@@ -1,5 +1,7 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
@@ -7,24 +9,22 @@ import de.mfietz.msrmcp.model.IndexResult;
 import de.mfietz.msrmcp.tool.GetHotspotsTool;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Verifies that TypeScript files are indexed and appear in hotspots.
  *
- * <p>LocCounter must populate linesOfCode for .ts files; PMD skips them so
- * cyclomaticComplexity stays -1, but hotspotScore must be > 0 via the LOC fallback.
+ * <p>LocCounter must populate linesOfCode for .ts files; PMD skips them so cyclomaticComplexity
+ * stays -1, but hotspotScore must be > 0 via the LOC fallback.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TypeScriptHotspotsAcceptanceTest {
 
-    static final String APP_TS = """
+    static final String APP_TS =
+            """
             export function greet(name: string): string {
                 if (!name) {
                     return "Hello, world!";
@@ -38,10 +38,14 @@ class TypeScriptHotspotsAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: add greeting", "src/app.ts", APP_TS)
-                .commit("fix: empty name",    "src/app.ts", APP_TS.replace("!name", "name.length === 0"))
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit("feat: add greeting", "src/app.ts", APP_TS)
+                        .commit(
+                                "fix: empty name",
+                                "src/app.ts",
+                                APP_TS.replace("!name", "name.length === 0"))
+                        .build();
 
         Files.createDirectories(repoDir.resolve(".msr"));
         Database db = Database.open(repoDir.resolve(".msr/msr.db"));
@@ -49,9 +53,9 @@ class TypeScriptHotspotsAcceptanceTest {
         IndexResult result = Indexer.runFull(repoDir, db);
         assertThat(result.status()).isEqualTo("ok");
 
-        hotspotsTool = new GetHotspotsTool(
-                db.attach(FileChangeDao.class),
-                db.attach(FileMetricsDao.class));
+        hotspotsTool =
+                new GetHotspotsTool(
+                        db.attach(FileChangeDao.class), db.attach(FileMetricsDao.class));
     }
 
     @AfterAll

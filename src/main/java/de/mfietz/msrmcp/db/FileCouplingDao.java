@@ -1,16 +1,16 @@
 package de.mfietz.msrmcp.db;
 
+import java.util.List;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
-import java.util.List;
-
 public interface FileCouplingDao {
 
-    @SqlBatch("""
+    @SqlBatch(
+            """
             INSERT INTO file_coupling(file_a_id, file_b_id, co_changes, total_changes_a, total_changes_b)
             VALUES(:fileAId, :fileBId, :coChanges, :totalChangesA, :totalChangesB)
             ON CONFLICT(file_a_id, file_b_id) DO UPDATE SET
@@ -20,7 +20,8 @@ public interface FileCouplingDao {
             """)
     void upsertBatch(@BindMethods List<FileCouplingIdRecord> records);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT
               fa.path AS file_a, fb.path AS file_b,
               fc.co_changes, fc.total_changes_a, fc.total_changes_b,
@@ -39,7 +40,8 @@ public interface FileCouplingDao {
             @Bind("fileFilter") String fileFilter,
             @Bind("topN") int topN);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             WITH recent AS (
               SELECT fc.file_id, fc.commit_id
               FROM file_changes fc
@@ -76,7 +78,8 @@ public interface FileCouplingDao {
             @Bind("minCoupling") double minCoupling,
             @Bind("topN") int topN);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT
               CASE WHEN fc.file_a_id = fTarget.file_id THEN fb.path ELSE fa.path END AS partner_path,
               fc.co_changes,
@@ -97,7 +100,8 @@ public interface FileCouplingDao {
             @Bind("minCoupling") double minCoupling,
             @Bind("topN") int topN);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             WITH recent AS (
               SELECT fc.file_id, fc.commit_id
               FROM file_changes fc
@@ -143,11 +147,7 @@ public interface FileCouplingDao {
     void deleteAll();
 
     record FileCouplingIdRecord(
-            long fileAId,
-            long fileBId,
-            int coChanges,
-            int totalChangesA,
-            int totalChangesB) {}
+            long fileAId, long fileBId, int coChanges, int totalChangesA, int totalChangesB) {}
 
     record CouplingRow(
             String fileA,

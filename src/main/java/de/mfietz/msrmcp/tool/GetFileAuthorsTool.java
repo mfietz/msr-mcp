@@ -1,20 +1,19 @@
 package de.mfietz.msrmcp.tool;
 
+import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+
 import de.mfietz.msrmcp.db.CommitDao;
 import de.mfietz.msrmcp.db.CommitDao.AuthorRow;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.List;
 import java.util.Map;
-
-import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_file_authors}
  *
- * <p>Returns the authors who changed a specific file most often, ranked by commit count.
- * Useful for identifying knowledge owners and bus-factor risks.
+ * <p>Returns the authors who changed a specific file most often, ranked by commit count. Useful for
+ * identifying knowledge owners and bus-factor risks.
  */
 public final class GetFileAuthorsTool {
 
@@ -33,7 +32,7 @@ public final class GetFileAuthorsTool {
             if (filePath == null || filePath.isBlank()) {
                 return error("filePath is required");
             }
-            int  topN        = intArg(args, "topN", 10);
+            int topN = intArg(args, "topN", 10);
             Long sinceEpochMs = longArg(args, "sinceEpochMs");
 
             List<AuthorRow> rows = commitDao.findAuthorsForFile(filePath, sinceEpochMs, topN);
@@ -46,7 +45,8 @@ public final class GetFileAuthorsTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns the authors who changed a specific file most often, ranked by commit count.
                         Useful for identifying knowledge owners and single-point-of-failure risks (bus factor).
                         """)

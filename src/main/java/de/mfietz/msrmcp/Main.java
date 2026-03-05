@@ -9,7 +9,6 @@ import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -17,6 +16,7 @@ import java.nio.file.Path;
  * Entry point for the MSR MCP Server.
  *
  * <p>Startup sequence:
+ *
  * <ol>
  *   <li>Verify that the current directory is a git repo (fail-fast otherwise)
  *   <li>Create {@code .msr/} directory and open the SQLite database
@@ -28,8 +28,8 @@ import java.nio.file.Path;
 public final class Main {
 
     private static final String VERSION = "1.0.0-SNAPSHOT";
-    private static final Path MSR_DIR   = Path.of(".msr");
-    private static final Path DB_PATH   = MSR_DIR.resolve("msr.db");
+    private static final Path MSR_DIR = Path.of(".msr");
+    private static final Path DB_PATH = MSR_DIR.resolve("msr.db");
 
     public static void main(String[] args) throws Exception {
         // ── [1] Verify git repo ────────────────────────────────────────────
@@ -43,9 +43,9 @@ public final class Main {
         Files.createDirectories(MSR_DIR);
         Database db = Database.open(DB_PATH);
 
-        CommitDao       commitDao       = db.attach(CommitDao.class);
-        FileChangeDao   fileChangeDao   = db.attach(FileChangeDao.class);
-        FileMetricsDao  fileMetricsDao  = db.attach(FileMetricsDao.class);
+        CommitDao commitDao = db.attach(CommitDao.class);
+        FileChangeDao fileChangeDao = db.attach(FileChangeDao.class);
+        FileMetricsDao fileMetricsDao = db.attach(FileMetricsDao.class);
         FileCouplingDao fileCouplingDao = db.attach(FileCouplingDao.class);
 
         // ── [3] Incremental index on every startup ────────────────────────
@@ -55,7 +55,8 @@ public final class Main {
         if ("error".equals(r.status())) {
             System.err.println("MSR: indexing failed: " + r.errorMessage());
         } else if (r.commitsProcessed() > 0) {
-            System.err.printf("MSR: indexed %d commits, %d files in %d ms%n",
+            System.err.printf(
+                    "MSR: indexed %d commits, %d files in %d ms%n",
                     r.commitsProcessed(), r.filesIndexed(), r.durationMs());
         } else {
             System.err.println("MSR: index is up to date.");
@@ -64,9 +65,11 @@ public final class Main {
         // ── [4] Build MCP server ──────────────────────────────────────────
         var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
 
-        McpSyncServer server = McpServer.sync(transport)
-                .serverInfo("msr-mcp", VERSION)
-                .instructions("""
+        McpSyncServer server =
+                McpServer.sync(transport)
+                        .serverInfo("msr-mcp", VERSION)
+                        .instructions(
+                                """
                         Mining Software Repository server. Analyses the git history of the \
                         current repository and exposes tools for: identifying hotspots \
                         (frequently-changed complex files), temporal coupling (files that \
@@ -76,12 +79,20 @@ public final class Main {
                         (files dominated by a single author), and churn analysis \
                         (files ranked by total lines added + deleted). All data comes from the indexed \
                         local git history — no network calls are made.""")
-                .capabilities(ServerCapabilities.builder()
-                        .tools(false)   // enable tools; false = no list-changed notifications
-                        .build())
-                .tools(ToolRegistry.buildSpecs(
-                        commitDao, fileChangeDao, fileMetricsDao, fileCouplingDao, repoDir, db))
-                .build();
+                        .capabilities(
+                                ServerCapabilities.builder()
+                                        .tools(false) // enable tools; false = no list-changed
+                                        // notifications
+                                        .build())
+                        .tools(
+                                ToolRegistry.buildSpecs(
+                                        commitDao,
+                                        fileChangeDao,
+                                        fileMetricsDao,
+                                        fileCouplingDao,
+                                        repoDir,
+                                        db))
+                        .build();
 
         // ── [5] Serve until client disconnects ───────────────────────────
         // StdioServerTransportProvider runs non-daemon threads that keep the JVM alive

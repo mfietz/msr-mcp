@@ -1,17 +1,16 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.tool.GetSummaryTool;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Acceptance tests for the get_summary tool.
@@ -26,21 +25,29 @@ class GetSummaryAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: init",   Map.of("src/Main.java", "class M{}", "src/Helper.java", "class H{}"))
-                .commit("fix: v2",      "src/Main.java", "class M{ void m(){} }")
-                .commit("fix: v3",      "src/Main.java", "class M{ void m(){} void n(){} }")
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit(
+                                "feat: init",
+                                Map.of(
+                                        "src/Main.java",
+                                        "class M{}",
+                                        "src/Helper.java",
+                                        "class H{}"))
+                        .commit("fix: v2", "src/Main.java", "class M{ void m(){} }")
+                        .commit("fix: v3", "src/Main.java", "class M{ void m(){} void n(){} }")
+                        .build();
 
         Files.createDirectories(repoDir.resolve(".msr"));
         Database db = Database.open(repoDir.resolve(".msr/msr.db"));
         Indexer.runFull(repoDir, db);
 
-        summaryTool = new GetSummaryTool(
-                db.attach(CommitDao.class),
-                db.attach(FileChangeDao.class),
-                db.attach(FileMetricsDao.class),
-                db.attach(FileDao.class));
+        summaryTool =
+                new GetSummaryTool(
+                        db.attach(CommitDao.class),
+                        db.attach(FileChangeDao.class),
+                        db.attach(FileMetricsDao.class),
+                        db.attach(FileDao.class));
     }
 
     @AfterAll

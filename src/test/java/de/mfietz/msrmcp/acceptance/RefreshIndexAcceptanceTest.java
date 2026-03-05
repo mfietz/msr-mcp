@@ -1,5 +1,7 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
@@ -7,17 +9,12 @@ import de.mfietz.msrmcp.model.IndexResult;
 import de.mfietz.msrmcp.tool.RefreshIndexTool;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.junit.jupiter.api.*;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-/**
- * Acceptance tests for the refresh_index tool.
- */
+/** Acceptance tests for the refresh_index tool. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RefreshIndexAcceptanceTest {
 
@@ -28,9 +25,10 @@ class RefreshIndexAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("initial commit", "src/App.java", "public class App {}")
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit("initial commit", "src/App.java", "public class App {}")
+                        .build();
 
         Files.createDirectories(repoDir.resolve(".msr"));
         db = Database.open(repoDir.resolve(".msr/msr.db"));

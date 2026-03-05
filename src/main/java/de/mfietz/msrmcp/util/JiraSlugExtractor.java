@@ -10,7 +10,9 @@ public final class JiraSlugExtractor {
 
     private JiraSlugExtractor() {}
 
-    /** @return the slug (e.g. "ABC-123") or {@code null} if not present. */
+    /**
+     * @return the slug (e.g. "ABC-123") or {@code null} if not present.
+     */
     public static String extract(String firstLine) {
         if (firstLine == null) return null;
         Matcher m = PATTERN.matcher(firstLine.strip());

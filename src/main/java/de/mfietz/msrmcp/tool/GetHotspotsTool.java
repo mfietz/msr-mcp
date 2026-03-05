@@ -7,17 +7,17 @@ import de.mfietz.msrmcp.model.FileMetricsRecord;
 import de.mfietz.msrmcp.model.HotspotResult;
 import de.mfietz.msrmcp.util.HotspotScorer;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_hotspots}
  *
  * <p>Arguments (all optional):
+ *
  * <ul>
  *   <li>{@code topN} (int, default 20) — number of results
  *   <li>{@code sinceEpochMs} (long) — filter commits after this timestamp
@@ -42,17 +42,21 @@ public final class GetHotspotsTool {
             int topN = intArg(args, "topN", 20);
             Long sinceEpochMs = longArg(args, "sinceEpochMs");
             String ext = stringArg(args, "extension", "");
-            String extPattern = "%" + ext;  // "" → "%" matches all files
+            String extPattern = "%" + ext; // "" → "%" matches all files
             String pathFilter = stringArg(args, "pathFilter", "%");
 
             List<FileChangeFrequencyRow> rows =
                     fileChangeDao.findTopChangedFiles(sinceEpochMs, extPattern, pathFilter, topN);
 
             List<String> paths = rows.stream().map(FileChangeFrequencyRow::filePath).toList();
-            Map<String, FileMetricsRecord> metricsMap = paths.isEmpty()
-                    ? Map.of()
-                    : fileMetricsDao.findByPaths(paths).stream()
-                            .collect(Collectors.toMap(FileMetricsRecord::filePath, Function.identity()));
+            Map<String, FileMetricsRecord> metricsMap =
+                    paths.isEmpty()
+                            ? Map.of()
+                            : fileMetricsDao.findByPaths(paths).stream()
+                                    .collect(
+                                            Collectors.toMap(
+                                                    FileMetricsRecord::filePath,
+                                                    Function.identity()));
 
             List<HotspotResult> scored = HotspotScorer.score(rows, metricsMap);
             List<HotspotResult> result = scored.subList(0, Math.min(topN, scored.size()));
@@ -66,7 +70,8 @@ public final class GetHotspotsTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns the top-N hotspot files ranked by change frequency × complexity.
                         Optionally filter by time window (sinceEpochMs) and file extension.
                         """)
@@ -77,9 +82,7 @@ public final class GetHotspotsTool {
     // ── Shared helpers used by all tool classes ──────────────────────────────
 
     static CallToolResult ok(String json) {
-        return CallToolResult.builder()
-                .content(List.of(new TextContent(json)))
-                .build();
+        return CallToolResult.builder().content(List.of(new TextContent(json))).build();
     }
 
     static CallToolResult error(String msg) {

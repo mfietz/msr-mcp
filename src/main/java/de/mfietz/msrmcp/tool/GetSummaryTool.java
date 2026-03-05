@@ -9,26 +9,23 @@ import de.mfietz.msrmcp.model.SummaryResult.AuthorSummary;
 import de.mfietz.msrmcp.model.SummaryResult.LangCount;
 import de.mfietz.msrmcp.model.SummaryResult.TopFile;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_summary}
  *
- * <p>Returns a quick overview of the indexed repository: commit count,
- * date range, file counts, top-5 most-changed files, top authors,
- * and language distribution.
- * No arguments required.
+ * <p>Returns a quick overview of the indexed repository: commit count, date range, file counts,
+ * top-5 most-changed files, top authors, and language distribution. No arguments required.
  */
 public final class GetSummaryTool {
 
     static final String NAME = "get_summary";
     private static final JsonMapper MAPPER = JsonMapper.shared();
-    private static final int TOP_FILES   = 5;
+    private static final int TOP_FILES = 5;
     private static final int TOP_AUTHORS = 5;
 
     private final CommitDao commitDao;
@@ -36,41 +33,54 @@ public final class GetSummaryTool {
     private final FileMetricsDao fileMetricsDao;
     private final FileDao fileDao;
 
-    public GetSummaryTool(CommitDao commitDao,
-                          FileChangeDao fileChangeDao,
-                          FileMetricsDao fileMetricsDao,
-                          FileDao fileDao) {
-        this.commitDao     = commitDao;
+    public GetSummaryTool(
+            CommitDao commitDao,
+            FileChangeDao fileChangeDao,
+            FileMetricsDao fileMetricsDao,
+            FileDao fileDao) {
+        this.commitDao = commitDao;
         this.fileChangeDao = fileChangeDao;
         this.fileMetricsDao = fileMetricsDao;
-        this.fileDao       = fileDao;
+        this.fileDao = fileDao;
     }
 
     public CallToolResult handle(Map<String, Object> args) {
         try {
-            int totalCommits      = commitDao.count();
-            int uniqueAuthors     = commitDao.countDistinctAuthors();
+            int totalCommits = commitDao.count();
+            int uniqueAuthors = commitDao.countDistinctAuthors();
             int totalFilesTracked = fileChangeDao.countDistinctPaths();
-            int filesWithMetrics  = fileMetricsDao.count();
-            long earliestMs       = commitDao.findEarliestAuthorDate().orElse(0L);
-            long latestMs         = commitDao.findLatestAuthorDate().orElse(0L);
+            int filesWithMetrics = fileMetricsDao.count();
+            long earliestMs = commitDao.findEarliestAuthorDate().orElse(0L);
+            long latestMs = commitDao.findLatestAuthorDate().orElse(0L);
 
-            List<TopFile> topFiles = fileChangeDao
-                    .findTopChangedFiles(null, "%", "%", TOP_FILES)
-                    .stream()
-                    .map(r -> new TopFile(r.filePath(), r.changeFrequency()))
-                    .toList();
+            List<TopFile> topFiles =
+                    fileChangeDao.findTopChangedFiles(null, "%", "%", TOP_FILES).stream()
+                            .map(r -> new TopFile(r.filePath(), r.changeFrequency()))
+                            .toList();
 
-            List<AuthorSummary> topAuthors = commitDao.findTopAuthors(TOP_AUTHORS)
-                    .stream()
-                    .map(r -> new AuthorSummary(r.authorName(), r.authorEmail(), r.commitCount()))
-                    .toList();
+            List<AuthorSummary> topAuthors =
+                    commitDao.findTopAuthors(TOP_AUTHORS).stream()
+                            .map(
+                                    r ->
+                                            new AuthorSummary(
+                                                    r.authorName(),
+                                                    r.authorEmail(),
+                                                    r.commitCount()))
+                            .toList();
 
             List<LangCount> languageDistribution = buildLangDistribution();
 
-            SummaryResult result = new SummaryResult(
-                    totalCommits, uniqueAuthors, totalFilesTracked, filesWithMetrics,
-                    earliestMs, latestMs, topFiles, topAuthors, languageDistribution);
+            SummaryResult result =
+                    new SummaryResult(
+                            totalCommits,
+                            uniqueAuthors,
+                            totalFilesTracked,
+                            filesWithMetrics,
+                            earliestMs,
+                            latestMs,
+                            topFiles,
+                            topAuthors,
+                            languageDistribution);
 
             return GetHotspotsTool.ok(MAPPER.writeValueAsString(result));
         } catch (Exception e) {
@@ -86,8 +96,9 @@ public final class GetSummaryTool {
             counts.merge(ext, 1, Integer::sum);
         }
         return counts.entrySet().stream()
-                .sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder())
-                        .thenComparing(Map.Entry.comparingByKey()))
+                .sorted(
+                        Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder())
+                                .thenComparing(Map.Entry.comparingByKey()))
                 .map(e -> new LangCount(e.getKey(), e.getValue()))
                 .toList();
     }
@@ -95,7 +106,8 @@ public final class GetSummaryTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns an overview of the indexed repository:
                         total commits, unique authors, file counts, date range,
                         top-5 most-changed files, top-5 authors by commit count,

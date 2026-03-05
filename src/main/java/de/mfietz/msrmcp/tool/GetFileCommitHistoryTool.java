@@ -1,22 +1,24 @@
 package de.mfietz.msrmcp.tool;
 
+import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+
 import de.mfietz.msrmcp.db.CommitDao;
 import de.mfietz.msrmcp.db.FileChangeDao;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.*;
-
-import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_file_commit_history}
  *
  * <p>Required argument:
+ *
  * <ul>
  *   <li>{@code filePath} (String) — repo-relative path, e.g. "src/Main.java"
  * </ul>
+ *
  * Optional:
+ *
  * <ul>
  *   <li>{@code limit} (int, default 50)
  *   <li>{@code sinceEpochMs} (long)
@@ -41,21 +43,25 @@ public final class GetFileCommitHistoryTool {
             if (filePath == null || filePath.isBlank()) {
                 return error("filePath is required");
             }
-            int    limit       = intArg(args, "limit", 50);
-            Long sinceEpochMs  = longArg(args, "sinceEpochMs");
-            String jiraSlug    = stringArg(args, "jiraSlug", null);
+            int limit = intArg(args, "limit", 50);
+            Long sinceEpochMs = longArg(args, "sinceEpochMs");
+            String jiraSlug = stringArg(args, "jiraSlug", null);
 
-            List<String> hashes = fileChangeDao.findCommitHashesForFile(filePath, sinceEpochMs, jiraSlug, limit);
+            List<String> hashes =
+                    fileChangeDao.findCommitHashesForFile(filePath, sinceEpochMs, jiraSlug, limit);
 
             List<Map<String, Object>> result = new ArrayList<>(hashes.size());
             for (String hash : hashes) {
                 Map<String, Object> entry = new LinkedHashMap<>();
                 entry.put("hash", hash);
-                commitDao.findByHash(hash).ifPresent(c -> {
-                    entry.put("authorDate", c.authorDate());
-                    entry.put("firstLine", c.firstLine());
-                    entry.put("jiraSlug", c.jiraSlug());
-                });
+                commitDao
+                        .findByHash(hash)
+                        .ifPresent(
+                                c -> {
+                                    entry.put("authorDate", c.authorDate());
+                                    entry.put("firstLine", c.firstLine());
+                                    entry.put("jiraSlug", c.jiraSlug());
+                                });
                 entry.put("filesChanged", fileChangeDao.findPathsByCommit(hash));
                 result.add(entry);
             }
@@ -69,7 +75,8 @@ public final class GetFileCommitHistoryTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns commit history for a specific file in reverse chronological order.
                         Each entry includes hash, authorDate, firstLine, jiraSlug, and filesChanged.
                         """)

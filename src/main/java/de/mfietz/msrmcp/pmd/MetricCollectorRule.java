@@ -1,30 +1,31 @@
 package de.mfietz.msrmcp.pmd;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import net.sourceforge.pmd.lang.LanguageRegistry;
 import net.sourceforge.pmd.lang.java.ast.*;
 import net.sourceforge.pmd.lang.java.metrics.JavaMetrics;
 import net.sourceforge.pmd.lang.java.rule.AbstractJavaRule;
 import net.sourceforge.pmd.lang.metrics.MetricsUtil;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 /**
- * PMD 7 rule that visits every method/constructor declaration and collects
- * the maximum cyclomatic complexity and cognitive complexity per source file.
- * File-level LOC is captured from the compilation-unit end line.
+ * PMD 7 rule that visits every method/constructor declaration and collects the maximum cyclomatic
+ * complexity and cognitive complexity per source file. File-level LOC is captured from the
+ * compilation-unit end line.
  *
- * <p>PMD 7 clones rule instances via reflection for each analysis thread. To share
- * results across all clones, the result maps are static. Call {@link #reset()} before
- * each {@code performAnalysis()} run, then read the static getters afterwards.
+ * <p>PMD 7 clones rule instances via reflection for each analysis thread. To share results across
+ * all clones, the result maps are static. Call {@link #reset()} before each {@code
+ * performAnalysis()} run, then read the static getters afterwards.
  */
 public final class MetricCollectorRule extends AbstractJavaRule {
 
     // Static so that all PMD-created clones write into the same maps.
-    private static final ConcurrentHashMap<String, Integer> maxCycloPerFile     = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Integer> maxCognitivePerFile = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Integer> locPerFile          = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Integer> maxCycloPerFile =
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Integer> maxCognitivePerFile =
+            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Integer> locPerFile = new ConcurrentHashMap<>();
 
     public MetricCollectorRule() {
         setName("MetricCollector");
@@ -66,20 +67,22 @@ public final class MetricCollectorRule extends AbstractJavaRule {
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     /**
-     * Both ASTMethodDeclaration and ASTConstructorDeclaration extend
-     * AbstractExecutableDeclaration which implements ASTExecutableDeclaration,
-     * which is what JavaMetrics.CYCLO / COGNITIVE_COMPLEXITY operate on.
+     * Both ASTMethodDeclaration and ASTConstructorDeclaration extend AbstractExecutableDeclaration
+     * which implements ASTExecutableDeclaration, which is what JavaMetrics.CYCLO /
+     * COGNITIVE_COMPLEXITY operate on.
      */
     private void collectCallable(ASTExecutableDeclaration node) {
         String file = fileOf(node.getRoot());
         try {
             Integer cyclo = MetricsUtil.computeMetric(JavaMetrics.CYCLO, node);
             if (cyclo != null) maxCycloPerFile.merge(file, cyclo, Math::max);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         try {
             Integer cog = MetricsUtil.computeMetric(JavaMetrics.COGNITIVE_COMPLEXITY, node);
             if (cog != null) maxCognitivePerFile.merge(file, cog, Math::max);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private static String fileOf(ASTCompilationUnit root) {

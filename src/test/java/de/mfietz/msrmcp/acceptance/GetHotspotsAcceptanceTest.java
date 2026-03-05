@@ -1,37 +1,37 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
-import de.mfietz.msrmcp.model.HotspotResult;
 import de.mfietz.msrmcp.model.IndexResult;
 import de.mfietz.msrmcp.tool.GetHotspotsTool;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Acceptance tests for the get_hotspots tool.
  *
  * <p>Test repo layout:
+ *
  * <ul>
  *   <li>src/Main.java — changed in 3 commits (highest churn)
  *   <li>src/Helper.java — changed in 1 commit
  * </ul>
+ *
  * Expected: Main.java appears first with changeFrequency=3.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class GetHotspotsAcceptanceTest {
 
-    static final String MAIN_JAVA = """
+    static final String MAIN_JAVA =
+            """
             public class Main {
                 public int compute(int x) {
                     if (x > 0) {
@@ -43,7 +43,8 @@ class GetHotspotsAcceptanceTest {
             }
             """;
 
-    static final String HELPER_JAVA = """
+    static final String HELPER_JAVA =
+            """
             public class Helper {
                 public String greet(String name) {
                     return "Hello, " + name;
@@ -62,17 +63,26 @@ class GetHotspotsAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: initial",  Map.of("src/Main.java", MAIN_JAVA, "src/Helper.java", HELPER_JAVA))
-                .commit("fix: iteration", "src/Main.java", MAIN_JAVA.replace("x * 2", "x + x"))
-                .commit("fix: edge case", "src/Main.java", MAIN_JAVA.replace("x > 0", "x >= 0"))
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit(
+                                "feat: initial",
+                                Map.of("src/Main.java", MAIN_JAVA, "src/Helper.java", HELPER_JAVA))
+                        .commit(
+                                "fix: iteration",
+                                "src/Main.java",
+                                MAIN_JAVA.replace("x * 2", "x + x"))
+                        .commit(
+                                "fix: edge case",
+                                "src/Main.java",
+                                MAIN_JAVA.replace("x > 0", "x >= 0"))
+                        .build();
 
         Files.createDirectories(repoDir.resolve(".msr"));
         dbPath = repoDir.resolve(".msr/msr.db");
         db = Database.open(dbPath);
-        commitDao    = db.attach(CommitDao.class);
-        fileChangeDao  = db.attach(FileChangeDao.class);
+        commitDao = db.attach(CommitDao.class);
+        fileChangeDao = db.attach(FileChangeDao.class);
         fileMetricsDao = db.attach(FileMetricsDao.class);
         fileCouplingDao = db.attach(FileCouplingDao.class);
 
@@ -97,7 +107,7 @@ class GetHotspotsAcceptanceTest {
         assertThat(json).contains("Main.java");
 
         // Main.java should appear first (highest churn)
-        int mainIdx   = json.indexOf("Main.java");
+        int mainIdx = json.indexOf("Main.java");
         int helperIdx = json.indexOf("Helper.java");
         assertThat(mainIdx).isLessThan(helperIdx);
     }

@@ -1,23 +1,22 @@
 package de.mfietz.msrmcp.index;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.db.FileMetricsDao.FileMetricsIdRecord;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
- * Tests for the two-phase PmdRunner API:
- * {@link PmdRunner#collectMetrics()} collects results without writing to DB,
- * {@link PmdRunner#writeBatch(List)} writes the collected results.
+ * Tests for the two-phase PmdRunner API: {@link PmdRunner#collectMetrics()} collects results
+ * without writing to DB, {@link PmdRunner#writeBatch(List)} writes the collected results.
  */
 class PmdRunnerTest {
 
-    static final String JAVA_SOURCE = """
+    static final String JAVA_SOURCE =
+            """
             public class Sample {
                 public int compute(int x) {
                     if (x > 0) {

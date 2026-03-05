@@ -1,11 +1,10 @@
 package de.mfietz.msrmcp.db;
 
+import java.util.List;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindList;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
-
-import java.util.List;
 
 public interface FileDao {
 

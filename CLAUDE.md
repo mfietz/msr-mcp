@@ -72,6 +72,23 @@ cd /some/git/repo
 java -jar /path/to/msr-mcp-server.jar
 ```
 
+## Code style
+
+Formatter: **google-java-format 1.28.0 (AOSP style — 4-space indent)** via Spotless.
+
+```bash
+mvn spotless:apply   # format all Java files in-place
+mvn spotless:check   # verify formatting (exits non-zero if dirty)
+```
+
+Conventions observed in this codebase:
+- `final` classes everywhere (no subclassing)
+- Java records for all data/result types
+- SQL in text blocks (`"""..."""`)
+- Package-private visibility by default; `public` only at API boundaries
+- Shared tool helpers (`ok()`, `error()`, `intArg()`, …) live in `GetHotspotsTool` — reuse, don't duplicate
+- Guard `@BindList` calls: `if (list.isEmpty()) return …` before calling any DAO method with `IN (...)`
+
 ## Key patterns
 
 ### JDBI + Java records

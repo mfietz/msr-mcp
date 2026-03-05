@@ -1,21 +1,22 @@
 package de.mfietz.msrmcp.db;
 
+import java.util.List;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
 
-import java.util.List;
-
 public interface FileChangeDao {
 
-    @SqlBatch("""
+    @SqlBatch(
+            """
             INSERT INTO file_changes(commit_id, file_id, lines_added, lines_deleted)
             VALUES(:commitId, :fileId, :linesAdded, :linesDeleted)
             """)
     void insertBatch(@BindMethods List<FileChangeIdRecord> changes);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT f.path AS file_path,
                    COUNT(*) AS change_frequency,
                    age.first_commit_ms,
@@ -44,7 +45,8 @@ public interface FileChangeDao {
             @Bind("pathFilter") String pathFilter,
             @Bind("topN") int topN);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT c.hash AS commit_hash
             FROM file_changes fc
             JOIN commits c ON c.commit_id = fc.commit_id
@@ -60,7 +62,8 @@ public interface FileChangeDao {
             @Bind("jiraSlug") String jiraSlug,
             @Bind("limit") int limit);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT f.path
             FROM file_changes fc
             JOIN files f ON f.file_id = fc.file_id
@@ -68,7 +71,8 @@ public interface FileChangeDao {
             """)
     List<String> findPathsByCommit(@Bind("commitHash") String commitHash);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT DISTINCT f.path
             FROM file_changes fc
             JOIN files f ON f.file_id = fc.file_id
@@ -78,7 +82,8 @@ public interface FileChangeDao {
     @SqlQuery("SELECT COUNT(DISTINCT file_id) FROM file_changes")
     int countDistinctPaths();
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT f.path AS file_path,
                    SUM(fc.lines_added)   AS lines_added,
                    SUM(fc.lines_deleted) AS lines_deleted,
@@ -103,12 +108,14 @@ public interface FileChangeDao {
 
     record FileChangeIdRecord(long commitId, long fileId, int linesAdded, int linesDeleted) {}
 
-    record ChurnRow(String filePath, long linesAdded, long linesDeleted, long churn, int changeFrequency) {}
+    record ChurnRow(
+            String filePath, long linesAdded, long linesDeleted, long churn, int changeFrequency) {}
 
-    record FileChangeFrequencyRow(String filePath, int changeFrequency,
-                                  long firstCommitMs, long lastCommitMs) {}
+    record FileChangeFrequencyRow(
+            String filePath, int changeFrequency, long firstCommitMs, long lastCommitMs) {}
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT f.path AS file_path,
                    MAX(c.author_date) AS last_commit_ms,
                    MIN(c.author_date) AS first_commit_ms

@@ -4,19 +4,18 @@ import de.mfietz.msrmcp.db.FileDao;
 import de.mfietz.msrmcp.db.FileMetricsDao;
 import de.mfietz.msrmcp.db.FileMetricsDao.FileMetricsIdRecord;
 import de.mfietz.msrmcp.pmd.MetricCollectorRule;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import net.sourceforge.pmd.PMDConfiguration;
 import net.sourceforge.pmd.PmdAnalysis;
 import net.sourceforge.pmd.lang.LanguageRegistry;
 import net.sourceforge.pmd.lang.rule.RuleSet;
 
-import java.nio.file.Path;
-import java.util.*;
-import java.util.logging.Logger;
-import java.util.stream.Collectors;
-
 /**
- * Runs PMD 7 over Java source files and stores max cyclomatic/cognitive
- * complexity per file in the DB.
+ * Runs PMD 7 over Java source files and stores max cyclomatic/cognitive complexity per file in the
+ * DB.
  */
 final class PmdRunner {
 
@@ -51,8 +50,8 @@ final class PmdRunner {
     }
 
     /**
-     * Scans all Java files in the repo directory and returns metrics without
-     * writing to the database. Call {@link #writeBatch} separately to persist.
+     * Scans all Java files in the repo directory and returns metrics without writing to the
+     * database. Call {@link #writeBatch} separately to persist.
      */
     List<FileMetricsIdRecord> collectMetrics() {
         PMDConfiguration config = new PMDConfiguration();
@@ -63,17 +62,18 @@ final class PmdRunner {
     }
 
     /**
-     * Scans only the given Java files and returns metrics without writing to
-     * the database. Call {@link #writeBatch} separately to persist.
+     * Scans only the given Java files and returns metrics without writing to the database. Call
+     * {@link #writeBatch} separately to persist.
      *
      * @param changedPaths repo-relative paths — only {@code .java} files are processed
      */
     List<FileMetricsIdRecord> collectMetrics(Set<String> changedPaths) {
-        Set<Path> javaFiles = changedPaths.stream()
-                .filter(p -> p.endsWith(".java"))
-                .map(repoDir::resolve)
-                .filter(p -> p.toFile().exists())
-                .collect(Collectors.toSet());
+        Set<Path> javaFiles =
+                changedPaths.stream()
+                        .filter(p -> p.endsWith(".java"))
+                        .map(repoDir::resolve)
+                        .filter(p -> p.toFile().exists())
+                        .collect(Collectors.toSet());
         if (javaFiles.isEmpty()) return List.of();
 
         PMDConfiguration config = new PMDConfiguration();
@@ -92,8 +92,8 @@ final class PmdRunner {
     /**
      * Runs PMD and returns collected metrics without writing to the database.
      *
-     * @param specificFiles if non-null, add only these files; otherwise use
-     *                      the directory configured in {@code config}
+     * @param specificFiles if non-null, add only these files; otherwise use the directory
+     *     configured in {@code config}
      */
     private List<FileMetricsIdRecord> scanPmd(PMDConfiguration config, Set<Path> specificFiles) {
         MetricCollectorRule.reset();
@@ -109,9 +109,9 @@ final class PmdRunner {
         }
 
         // Read from static maps (shared across all PMD-cloned rule instances)
-        Map<String, Integer> cyclo     = MetricCollectorRule.getMaxCycloPerFile();
+        Map<String, Integer> cyclo = MetricCollectorRule.getMaxCycloPerFile();
         Map<String, Integer> cognitive = MetricCollectorRule.getMaxCognitivePerFile();
-        Map<String, Integer> loc       = MetricCollectorRule.getLocPerFile();
+        Map<String, Integer> loc = MetricCollectorRule.getLocPerFile();
 
         Set<String> allFiles = new HashSet<>(loc.keySet());
         allFiles.addAll(cyclo.keySet());
@@ -122,11 +122,12 @@ final class PmdRunner {
         for (String absPath : allFiles) {
             String relPath = toRelativePath(absPath);
             relPaths.add(relPath);
-            metricsList.add(new int[]{
-                    loc.getOrDefault(absPath, 0),
-                    cyclo.getOrDefault(absPath, -1),
-                    cognitive.getOrDefault(absPath, -1)
-            });
+            metricsList.add(
+                    new int[] {
+                        loc.getOrDefault(absPath, 0),
+                        cyclo.getOrDefault(absPath, -1),
+                        cognitive.getOrDefault(absPath, -1)
+                    });
         }
 
         if (relPaths.isEmpty()) return List.of();
@@ -150,7 +151,8 @@ final class PmdRunner {
         }
         Map<String, Long> result = new HashMap<>();
         for (int i = 0; i < paths.size(); i += chunkSize) {
-            for (FileDao.FileRecord r : fileDao.findByPaths(paths.subList(i, Math.min(i + chunkSize, paths.size())))) {
+            for (FileDao.FileRecord r :
+                    fileDao.findByPaths(paths.subList(i, Math.min(i + chunkSize, paths.size())))) {
                 result.put(r.path(), r.fileId());
             }
         }

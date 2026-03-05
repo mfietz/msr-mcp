@@ -1,6 +1,8 @@
 package de.mfietz.msrmcp.db;
 
 import de.mfietz.msrmcp.model.CommitRecord;
+import java.util.List;
+import java.util.Optional;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindList;
 import org.jdbi.v3.sqlobject.customizer.BindMethods;
@@ -8,18 +10,17 @@ import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
-import java.util.List;
-import java.util.Optional;
-
 public interface CommitDao {
 
-    @SqlUpdate("""
+    @SqlUpdate(
+            """
             INSERT OR IGNORE INTO commits(hash, author_date, first_line, jira_slug, author_email, author_name)
             VALUES(:hash, :authorDate, :firstLine, :jiraSlug, :authorEmail, :authorName)
             """)
     void insert(@BindMethods CommitRecord c);
 
-    @SqlBatch("""
+    @SqlBatch(
+            """
             INSERT OR IGNORE INTO commits(hash, author_date, first_line, jira_slug, author_email, author_name)
             VALUES(:hash, :authorDate, :firstLine, :jiraSlug, :authorEmail, :authorName)
             """)
@@ -28,7 +29,8 @@ public interface CommitDao {
     @SqlQuery("SELECT hash FROM commits ORDER BY author_date DESC LIMIT 1")
     Optional<String> findLatestHash();
 
-    @SqlQuery("SELECT hash, author_date, first_line, jira_slug, author_email, author_name FROM commits WHERE hash = :hash")
+    @SqlQuery(
+            "SELECT hash, author_date, first_line, jira_slug, author_email, author_name FROM commits WHERE hash = :hash")
     Optional<CommitRecord> findByHash(@Bind("hash") String hash);
 
     @SqlQuery("SELECT COUNT(*) FROM commits")
@@ -37,7 +39,8 @@ public interface CommitDao {
     @SqlQuery("SELECT COUNT(DISTINCT author_email) FROM commits")
     int countDistinctAuthors();
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT author_email, author_name, COUNT(*) AS commit_count
             FROM commits
             GROUP BY author_email
@@ -55,7 +58,8 @@ public interface CommitDao {
     @SqlQuery("SELECT commit_id, hash FROM commits WHERE hash IN (<hashes>)")
     List<CommitIdRecord> findByHashes(@BindList("hashes") List<String> hashes);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             SELECT c.author_email, c.author_name, COUNT(*) AS commit_count
             FROM file_changes fc
             JOIN commits c ON c.commit_id = fc.commit_id
@@ -70,7 +74,8 @@ public interface CommitDao {
             @Bind("sinceEpochMs") Long sinceEpochMs,
             @Bind("topN") int topN);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             WITH file_author_counts AS (
               SELECT fc.file_id, c.author_email, c.author_name, COUNT(*) AS author_commits
               FROM file_changes fc
@@ -107,7 +112,8 @@ public interface CommitDao {
             @Bind("pathFilter") String pathFilter,
             @Bind("topN") int topN);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             WITH file_author_counts AS (
               SELECT fc.file_id, c.author_email, c.author_name, COUNT(*) AS author_amount
               FROM file_changes fc
@@ -140,7 +146,8 @@ public interface CommitDao {
             @Bind("minOwnership") double minOwnership,
             @Bind("topN") int topN);
 
-    @SqlQuery("""
+    @SqlQuery(
+            """
             WITH file_author_lines AS (
               SELECT fc.file_id, c.author_email, c.author_name, SUM(fc.lines_added) AS author_amount
               FROM file_changes fc
@@ -178,9 +185,19 @@ public interface CommitDao {
 
     record AuthorRow(String authorEmail, String authorName, int commitCount) {}
 
-    record BusFactorRow(String filePath, String topAuthorEmail, String topAuthorName,
-                        int topAuthorCommits, int totalCommits, double dominanceRatio) {}
+    record BusFactorRow(
+            String filePath,
+            String topAuthorEmail,
+            String topAuthorName,
+            int topAuthorCommits,
+            int totalCommits,
+            double dominanceRatio) {}
 
-    record OwnershipRow(String filePath, String topAuthorEmail, String topAuthorName,
-                        long topAuthorAmount, long totalAmount, double ownershipRatio) {}
+    record OwnershipRow(
+            String filePath,
+            String topAuthorEmail,
+            String topAuthorName,
+            long topAuthorAmount,
+            long totalAmount,
+            double ownershipRatio) {}
 }

@@ -1,20 +1,19 @@
 package de.mfietz.msrmcp.tool;
 
+import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+
 import de.mfietz.msrmcp.db.CommitDao;
 import de.mfietz.msrmcp.db.CommitDao.BusFactorRow;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.List;
 import java.util.Map;
-
-import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_bus_factor}
  *
- * <p>Returns files where a single author is responsible for a disproportionate share
- * of commits (dominance ratio ≥ threshold). High dominance = high bus-factor risk.
+ * <p>Returns files where a single author is responsible for a disproportionate share of commits
+ * (dominance ratio ≥ threshold). High dominance = high bus-factor risk.
  */
 public final class GetBusFactorTool {
 
@@ -29,10 +28,10 @@ public final class GetBusFactorTool {
 
     public CallToolResult handle(Map<String, Object> args) {
         try {
-            int    topN        = intArg(args, "topN", 20);
-            double threshold   = doubleArg(args, "threshold", 0.75);
-            String pathFilter  = stringArg(args, "pathFilter", null);
-            Long sinceEpochMs  = longArg(args, "sinceEpochMs");
+            int topN = intArg(args, "topN", 20);
+            double threshold = doubleArg(args, "threshold", 0.75);
+            String pathFilter = stringArg(args, "pathFilter", null);
+            Long sinceEpochMs = longArg(args, "sinceEpochMs");
 
             List<BusFactorRow> rows =
                     commitDao.findBusFactorFiles(sinceEpochMs, threshold, pathFilter, topN);
@@ -45,7 +44,8 @@ public final class GetBusFactorTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns files where one author is responsible for a disproportionate share of commits.
                         dominanceRatio = top author's commits / total commits for that file.
                         Files with dominanceRatio >= threshold are returned, sorted by dominanceRatio descending.
@@ -54,5 +54,4 @@ public final class GetBusFactorTool {
                 .inputSchema(ToolSchemas.busFactor())
                 .build();
     }
-
 }

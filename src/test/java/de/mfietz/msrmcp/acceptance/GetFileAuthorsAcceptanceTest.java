@@ -1,19 +1,18 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.tool.GetFileAuthorsTool;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Acceptance tests for the get_file_authors tool.
@@ -29,13 +28,17 @@ class GetFileAuthorsAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("init",    Map.of("src/A.java", "class A {}"))
-                .commit("feat: a2", Map.of("src/A.java", "class A { void m(){} }"))
-                .commit("feat: a3", Map.of("src/A.java", "class A { void m(){} void n(){} }"))
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit("init", Map.of("src/A.java", "class A {}"))
+                        .commit("feat: a2", Map.of("src/A.java", "class A { void m(){} }"))
+                        .commit(
+                                "feat: a3",
+                                Map.of("src/A.java", "class A { void m(){} void n(){} }"))
+                        .build();
 
-        // Bob adds one more commit via appendCommit (same repo, different author not easily configurable)
+        // Bob adds one more commit via appendCommit (same repo, different author not easily
+        // configurable)
         // Instead use a second commit on B.java to keep test simple — alice owns A.java fully
         Files.createDirectories(repoDir.resolve(".msr"));
         Database db = Database.open(repoDir.resolve(".msr/msr.db"));

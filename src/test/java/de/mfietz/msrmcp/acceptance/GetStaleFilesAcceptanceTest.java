@@ -1,5 +1,7 @@
 package de.mfietz.msrmcp.acceptance;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
 import de.mfietz.msrmcp.index.Indexer;
@@ -7,21 +9,19 @@ import de.mfietz.msrmcp.model.IndexResult;
 import de.mfietz.msrmcp.tool.GetStaleFilesTool;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
-import org.junit.jupiter.api.*;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.*;
 
 /**
  * Acceptance tests for the get_stale_files tool.
  *
  * <p>Test repo layout:
+ *
  * <ul>
  *   <li>src/Complex.java — committed once, 2024-01-01 (~790 days ago); has branches (cyclo > 1)
- *   <li>src/Simple.java  — committed once, 2024-01-01 (~790 days ago); linear (cyclo = 1)
+ *   <li>src/Simple.java — committed once, 2024-01-01 (~790 days ago); linear (cyclo = 1)
  * </ul>
  *
  * <p>Both files are ~790 days old. minDaysStale=365 includes them; minDaysStale=1000 excludes them.
@@ -31,7 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GetStaleFilesAcceptanceTest {
 
     // Two if-branches → cyclomatic complexity = 3 (PMD counts: method base + 2 ifs)
-    static final String COMPLEX_JAVA = """
+    static final String COMPLEX_JAVA =
+            """
             public class Complex {
                 public int work(int x) {
                     if (x > 10) {
@@ -44,7 +45,8 @@ class GetStaleFilesAcceptanceTest {
             """;
 
     // Linear method → cyclomatic complexity = 1
-    static final String SIMPLE_JAVA = """
+    static final String SIMPLE_JAVA =
+            """
             public class Simple {
                 public String greet(String name) {
                     return "Hello, " + name;
@@ -58,18 +60,23 @@ class GetStaleFilesAcceptanceTest {
 
     @BeforeAll
     void setUp() throws Exception {
-        repoDir = new TestRepoBuilder()
-                .commit("feat: initial",
-                        Map.of("src/Complex.java", COMPLEX_JAVA,
-                               "src/Simple.java",  SIMPLE_JAVA))
-                .build();
+        repoDir =
+                new TestRepoBuilder()
+                        .commit(
+                                "feat: initial",
+                                Map.of(
+                                        "src/Complex.java", COMPLEX_JAVA,
+                                        "src/Simple.java", SIMPLE_JAVA))
+                        .build();
 
         Files.createDirectories(repoDir.resolve(".msr"));
         db = Database.open(repoDir.resolve(".msr/msr.db"));
         IndexResult result = Indexer.runFull(repoDir, db);
         assertThat(result.status()).isEqualTo("ok");
 
-        tool = new GetStaleFilesTool(db.attach(FileChangeDao.class), db.attach(FileMetricsDao.class));
+        tool =
+                new GetStaleFilesTool(
+                        db.attach(FileChangeDao.class), db.attach(FileMetricsDao.class));
     }
 
     @AfterAll
@@ -107,7 +114,7 @@ class GetStaleFilesAcceptanceTest {
         String json = ((TextContent) result.content().getFirst()).text();
 
         int complexIdx = json.indexOf("Complex.java");
-        int simpleIdx  = json.indexOf("Simple.java");
+        int simpleIdx = json.indexOf("Simple.java");
         assertThat(complexIdx).isGreaterThanOrEqualTo(0);
         assertThat(simpleIdx).isGreaterThanOrEqualTo(0);
         assertThat(complexIdx).isLessThan(simpleIdx);

@@ -1,21 +1,20 @@
 package de.mfietz.msrmcp.tool;
 
+import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+
+import de.mfietz.msrmcp.db.FileChangeDao;
 import de.mfietz.msrmcp.db.FileCouplingDao;
 import de.mfietz.msrmcp.db.FileCouplingDao.CouplingRow;
-import de.mfietz.msrmcp.db.FileChangeDao;
 import io.modelcontextprotocol.spec.McpSchema.*;
-import tools.jackson.databind.json.JsonMapper;
-
 import java.util.List;
 import java.util.Map;
-
-import static de.mfietz.msrmcp.tool.GetHotspotsTool.*;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * MCP tool: {@code get_temporal_coupling}
  *
- * <p>Without {@code sinceEpochMs}: uses the fast pre-aggregated {@code file_coupling} table.
- * With {@code sinceEpochMs}: runs a CTE-based dynamic query on raw {@code file_changes}.
+ * <p>Without {@code sinceEpochMs}: uses the fast pre-aggregated {@code file_coupling} table. With
+ * {@code sinceEpochMs}: runs a CTE-based dynamic query on raw {@code file_changes}.
  */
 public final class GetTemporalCouplingTool {
 
@@ -32,14 +31,16 @@ public final class GetTemporalCouplingTool {
 
     public CallToolResult handle(Map<String, Object> args) {
         try {
-            int topN           = intArg(args, "topN", 20);
+            int topN = intArg(args, "topN", 20);
             double minCoupling = doubleArg(args, "minCoupling", 0.3);
-            String fileFilter  = stringArg(args, "fileFilter", null);
-            Long sinceEpochMs  = longArg(args, "sinceEpochMs");
+            String fileFilter = stringArg(args, "fileFilter", null);
+            Long sinceEpochMs = longArg(args, "sinceEpochMs");
 
-            List<CouplingRow> rows = sinceEpochMs != null
-                    ? fileCouplingDao.findTopCoupledSince(sinceEpochMs, fileFilter, minCoupling, topN)
-                    : fileCouplingDao.findTopCoupled(minCoupling, fileFilter, topN);
+            List<CouplingRow> rows =
+                    sinceEpochMs != null
+                            ? fileCouplingDao.findTopCoupledSince(
+                                    sinceEpochMs, fileFilter, minCoupling, topN)
+                            : fileCouplingDao.findTopCoupled(minCoupling, fileFilter, topN);
 
             return ok(MAPPER.writeValueAsString(rows));
         } catch (Exception e) {
@@ -50,7 +51,8 @@ public final class GetTemporalCouplingTool {
     static Tool toolSpec() {
         return Tool.builder()
                 .name(NAME)
-                .description("""
+                .description(
+                        """
                         Returns file pairs that are frequently changed together (temporal coupling).
                         Without sinceEpochMs uses the fast pre-aggregated table.
                         With sinceEpochMs runs a dynamic query scoped to that time window.
