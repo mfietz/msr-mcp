@@ -55,6 +55,11 @@ de.mfietz.msrmcp
     └── HotspotScorer.java       # min-max normalise changeFreq × cyclo (LOC fallback for non-Java)
 ```
 
+## Requirements
+
+- **Java 25** (`maven.compiler.release=25`) — no wrapper; use [SDKMAN](https://sdkman.io/): `sdk install java 25-open`
+- **Maven 3.9+** — no wrapper; use SDKMAN: `sdk install maven`
+
 ## Build & test
 
 ```bash
