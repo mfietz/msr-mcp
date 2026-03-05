@@ -150,4 +150,22 @@ class GetHotspotsAcceptanceTest {
         long objectCount = json.chars().filter(c -> c == '{').count();
         assertThat(objectCount).isEqualTo(1);
     }
+
+    @Test
+    void hotspotResult_containsAgeFields() {
+        CallToolResult result = hotspotsTool.handle(Map.of("topN", 1));
+        String json = ((TextContent) result.content().getFirst()).text();
+
+        // Both fields must be present
+        assertThat(json).contains("\"ageInDays\"");
+        assertThat(json).contains("\"daysSinceLastChange\"");
+
+        // Internal epoch-ms fields must NOT leak into JSON output
+        assertThat(json).doesNotContain("firstCommitMs");
+        assertThat(json).doesNotContain("lastCommitMs");
+
+        // Test commits are from 2024; running in 2026 → at least 300 days old
+        assertThat(json).doesNotContain("\"ageInDays\":0");
+        assertThat(json).doesNotContain("\"daysSinceLastChange\":0");
+    }
 }

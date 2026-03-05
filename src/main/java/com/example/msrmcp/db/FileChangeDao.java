@@ -17,10 +17,21 @@ public interface FileChangeDao {
     void insertBatch(@BindMethods List<FileChangeIdRecord> changes);
 
     @SqlQuery("""
-            SELECT f.path AS file_path, COUNT(*) AS change_frequency
+            SELECT f.path AS file_path,
+                   COUNT(*) AS change_frequency,
+                   age.first_commit_ms,
+                   age.last_commit_ms
             FROM file_changes fc
             JOIN files f ON f.file_id = fc.file_id
             JOIN commits c ON c.commit_id = fc.commit_id
+            JOIN (
+                SELECT fc2.file_id,
+                       MIN(c2.author_date) AS first_commit_ms,
+                       MAX(c2.author_date) AS last_commit_ms
+                FROM file_changes fc2
+                JOIN commits c2 ON c2.commit_id = fc2.commit_id
+                GROUP BY fc2.file_id
+            ) age ON age.file_id = fc.file_id
             WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
               AND f.path LIKE :extensionPattern
               AND f.path LIKE :pathFilter
@@ -98,5 +109,6 @@ public interface FileChangeDao {
 
     record ChurnRow(String filePath, long linesAdded, long linesDeleted, long churn, int changeFrequency) {}
 
-    record FileChangeFrequencyRow(String filePath, int changeFrequency) {}
+    record FileChangeFrequencyRow(String filePath, int changeFrequency,
+                                  long firstCommitMs, long lastCommitMs) {}
 }

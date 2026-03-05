@@ -47,7 +47,7 @@ com.example.msrmcp
 │   ├── GetSummaryTool.java            # now also returns uniqueAuthors, topAuthors, languageDistribution
 │   └── RefreshIndexTool.java
 ├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
-│                                # FileMetricsRecord, FileCouplingRecord, HotspotResult, IndexResult, SummaryResult
+│                                # FileMetricsRecord, FileCouplingRecord, HotspotResult(+ageInDays,+daysSinceLastChange), IndexResult, SummaryResult
 └── util/
     ├── JiraSlugExtractor.java   # regex ^([A-Z]{2,4}-\d+)
     └── HotspotScorer.java       # min-max normalise changeFreq × cyclo (LOC fallback for non-Java)
@@ -114,6 +114,7 @@ java -jar /path/to/msr-mcp-server.jar
 - `PmdRunner` processes only `.java` files (others get `cyclomaticComplexity=-1`)
 - `HotspotScorer` falls back to normalized LOC when cyclo is -1
 - `get_hotspots` default extension is `""` (matches all files, not just `.java`)
+- `get_hotspots` now returns `ageInDays` (days since first commit) and `daysSinceLastChange` (days since most recent commit) for each result
 
 ### Parallel indexing (LocCounter + PmdRunner)
 - After `GitWalker` completes, `LocCounter` and `PmdRunner` run in parallel via a 2-thread `ExecutorService`

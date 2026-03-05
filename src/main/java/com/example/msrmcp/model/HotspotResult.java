@@ -6,4 +6,6 @@ public record HotspotResult(
         int linesOfCode,
         int cyclomaticComplexity,
         int cognitiveComplexity,
-        double hotspotScore) {}
+        double hotspotScore,
+        int ageInDays,
+        int daysSinceLastChange) {}

@@ -31,6 +31,7 @@ public final class HotspotScorer {
             Map<String, FileMetricsRecord> metricsMap) {
 
         if (candidates.isEmpty()) return List.of();
+        long now = System.currentTimeMillis();
 
         // ── Normalise change frequency ──────────────────────────────────────
         int minFreq = candidates.stream().mapToInt(FileChangeFrequencyRow::changeFrequency).min().orElse(0);
@@ -74,8 +75,10 @@ public final class HotspotScorer {
             }
 
             double score = normFreq * normComplexity;
+            int ageInDays          = (int) ((now - row.firstCommitMs())  / 86_400_000L);
+            int daysSinceLastChange = (int) ((now - row.lastCommitMs())   / 86_400_000L);
             results.add(new HotspotResult(row.filePath(), row.changeFrequency(),
-                    loc, cyclo, cogni, score));
+                    loc, cyclo, cogni, score, ageInDays, daysSinceLastChange));
         }
 
         results.sort(Comparator.comparingDouble(HotspotResult::hotspotScore).reversed());
