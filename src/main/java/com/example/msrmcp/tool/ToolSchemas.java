@@ -102,6 +102,24 @@ final class ToolSchemas {
                 List.of(), null, null, null);
     }
 
+    static JsonSchema ownership() {
+        return new JsonSchema("object", Map.of(
+                "topN", Map.of("type", "integer", "description", "Max results (default 20)",
+                        "minimum", 1, "default", 20),
+                "ownershipBy", Map.of("type", "string",
+                        "description", "Measure ownership by 'commits' (default) or 'lines'"),
+                "minOwnership", Map.of("type", "number",
+                        "description", "Minimum ownership ratio 0–1 (default 0.0)",
+                        "minimum", 0.0, "maximum", 1.0, "default", 0.0),
+                "extension", Map.of("type", "string",
+                        "description", "File extension filter, e.g. \".java\". Default: all files"),
+                "pathFilter", Map.of("type", "string",
+                        "description", "SQL LIKE path pattern, e.g. \"src/service/%\". Default: all paths"),
+                "sinceEpochMs", Map.of("type", "integer",
+                        "description", "Only include commits after this Unix timestamp in ms")),
+                List.of(), null, null, null);
+    }
+
     static JsonSchema empty() {
         return new JsonSchema("object", Map.of(), List.of(), null, null, null);
     }

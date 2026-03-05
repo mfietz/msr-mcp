@@ -55,9 +55,4 @@ public final class GetBusFactorTool {
                 .build();
     }
 
-    private static double doubleArg(Map<String, Object> args, String key, double def) {
-        Object v = args.get(key);
-        if (v == null) return def;
-        return ((Number) v).doubleValue();
-    }
 }

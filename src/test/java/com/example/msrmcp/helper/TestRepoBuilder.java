@@ -27,7 +27,8 @@ import java.util.Map;
  */
 public final class TestRepoBuilder {
 
-    private record CommitSpec(String message, Map<String, String> files, Instant when) {}
+    private record CommitSpec(String message, Map<String, String> files, Instant when,
+                              String authorName, String authorEmail) {}
 
     private final List<CommitSpec> commits = new ArrayList<>();
     private long baseEpochSec = Instant.parse("2024-01-01T00:00:00Z").getEpochSecond();
@@ -40,8 +41,23 @@ public final class TestRepoBuilder {
     /** Add a commit touching multiple files (map: relative-path → content). */
     public TestRepoBuilder commit(String message, Map<String, String> files) {
         commits.add(new CommitSpec(message, new LinkedHashMap<>(files),
-                Instant.ofEpochSecond(baseEpochSec)));
+                Instant.ofEpochSecond(baseEpochSec), "Test Author", "test@example.com"));
         baseEpochSec += 3600; // 1 hour between commits
+        return this;
+    }
+
+    /** Add a commit with a single file and explicit author. */
+    public TestRepoBuilder commit(String message, String filePath, String content,
+                                  String authorName, String authorEmail) {
+        return commit(message, Map.of(filePath, content), authorName, authorEmail);
+    }
+
+    /** Add a commit touching multiple files with an explicit author. */
+    public TestRepoBuilder commit(String message, Map<String, String> files,
+                                  String authorName, String authorEmail) {
+        commits.add(new CommitSpec(message, new LinkedHashMap<>(files),
+                Instant.ofEpochSecond(baseEpochSec), authorName, authorEmail));
+        baseEpochSec += 3600;
         return this;
     }
 
@@ -58,8 +74,6 @@ public final class TestRepoBuilder {
         cfg.setString("user", null, "email", "test@example.com");
         cfg.save();
 
-        PersonIdent author = new PersonIdent("Test Author", "test@example.com");
-
         for (CommitSpec spec : commits) {
             for (var entry : spec.files().entrySet()) {
                 Path filePath = dir.resolve(entry.getKey());
@@ -67,6 +81,7 @@ public final class TestRepoBuilder {
                 Files.writeString(filePath, entry.getValue());
                 git.add().addFilepattern(entry.getKey()).call();
             }
+            PersonIdent author = new PersonIdent(spec.authorName(), spec.authorEmail());
             PersonIdent timed = new PersonIdent(author, spec.when());
             git.commit()
                     .setMessage(spec.message())

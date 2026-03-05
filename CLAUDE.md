@@ -43,11 +43,13 @@ com.example.msrmcp
 │   ├── GetFileCommitHistoryTool.java  # jiraSlug filter via LIKE on commits.jira_slug
 │   ├── GetFileAuthorsTool.java        # authors ranked by commit count; uses CommitDao.findAuthorsForFile
 │   ├── GetBusFactorTool.java          # dominanceRatio = top author commits / total; CommitDao.findBusFactorFiles
+│   ├── GetOwnershipTool.java          # dominant author per file; ownershipBy=commits|lines; CommitDao.findOwnershipByCommits/Lines
 │   ├── GetChurnTool.java              # top files by lines added+deleted; FileChangeDao.findTopChurn
 │   ├── GetSummaryTool.java            # now also returns uniqueAuthors, topAuthors, languageDistribution
 │   └── RefreshIndexTool.java
 ├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
 │                                # FileMetricsRecord, FileCouplingRecord, HotspotResult(+ageInDays,+daysSinceLastChange), IndexResult, SummaryResult
+│                                # CommitDao.OwnershipRow (inline record: path, ownerEmail, ownerName, ownerCount, totalCount)
 └── util/
     ├── JiraSlugExtractor.java   # regex ^([A-Z]{2,4}-\d+)
     └── HotspotScorer.java       # min-max normalise changeFreq × cyclo (LOC fallback for non-Java)

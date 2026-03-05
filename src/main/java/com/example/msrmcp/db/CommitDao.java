@@ -107,10 +107,80 @@ public interface CommitDao {
             @Bind("pathFilter") String pathFilter,
             @Bind("topN") int topN);
 
+    @SqlQuery("""
+            WITH file_author_counts AS (
+              SELECT fc.file_id, c.author_email, c.author_name, COUNT(*) AS author_amount
+              FROM file_changes fc
+              JOIN commits c ON c.commit_id = fc.commit_id
+              WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
+              GROUP BY fc.file_id, c.author_email
+            ),
+            file_totals AS (
+              SELECT file_id, SUM(author_amount) AS total_amount, MAX(author_amount) AS max_author_amount
+              FROM file_author_counts GROUP BY file_id
+            )
+            SELECT f.path AS file_path,
+                   fac.author_email AS top_author_email, fac.author_name AS top_author_name,
+                   fac.author_amount AS top_author_amount, ft.total_amount,
+                   CAST(fac.author_amount AS REAL) / ft.total_amount AS ownership_ratio
+            FROM file_totals ft
+            JOIN file_author_counts fac ON fac.file_id = ft.file_id
+                                        AND fac.author_amount = ft.max_author_amount
+            JOIN files f ON f.file_id = ft.file_id
+            WHERE f.path LIKE :extensionPattern
+              AND f.path LIKE :pathFilter
+              AND CAST(fac.author_amount AS REAL) / ft.total_amount >= :minOwnership
+            ORDER BY ownership_ratio DESC
+            LIMIT :topN
+            """)
+    List<OwnershipRow> findOwnershipByCommits(
+            @Bind("sinceEpochMs") Long sinceEpochMs,
+            @Bind("extensionPattern") String extensionPattern,
+            @Bind("pathFilter") String pathFilter,
+            @Bind("minOwnership") double minOwnership,
+            @Bind("topN") int topN);
+
+    @SqlQuery("""
+            WITH file_author_lines AS (
+              SELECT fc.file_id, c.author_email, c.author_name, SUM(fc.lines_added) AS author_amount
+              FROM file_changes fc
+              JOIN commits c ON c.commit_id = fc.commit_id
+              WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
+              GROUP BY fc.file_id, c.author_email
+            ),
+            file_totals AS (
+              SELECT file_id, SUM(author_amount) AS total_amount, MAX(author_amount) AS max_author_amount
+              FROM file_author_lines GROUP BY file_id
+              HAVING SUM(author_amount) > 0
+            )
+            SELECT f.path AS file_path,
+                   fal.author_email AS top_author_email, fal.author_name AS top_author_name,
+                   fal.author_amount AS top_author_amount, ft.total_amount,
+                   CAST(fal.author_amount AS REAL) / ft.total_amount AS ownership_ratio
+            FROM file_totals ft
+            JOIN file_author_lines fal ON fal.file_id = ft.file_id
+                                       AND fal.author_amount = ft.max_author_amount
+            JOIN files f ON f.file_id = ft.file_id
+            WHERE f.path LIKE :extensionPattern
+              AND f.path LIKE :pathFilter
+              AND CAST(fal.author_amount AS REAL) / ft.total_amount >= :minOwnership
+            ORDER BY ownership_ratio DESC
+            LIMIT :topN
+            """)
+    List<OwnershipRow> findOwnershipByLines(
+            @Bind("sinceEpochMs") Long sinceEpochMs,
+            @Bind("extensionPattern") String extensionPattern,
+            @Bind("pathFilter") String pathFilter,
+            @Bind("minOwnership") double minOwnership,
+            @Bind("topN") int topN);
+
     record CommitIdRecord(long commitId, String hash) {}
 
     record AuthorRow(String authorEmail, String authorName, int commitCount) {}
 
     record BusFactorRow(String filePath, String topAuthorEmail, String topAuthorName,
                         int topAuthorCommits, int totalCommits, double dominanceRatio) {}
+
+    record OwnershipRow(String filePath, String topAuthorEmail, String topAuthorName,
+                        long topAuthorAmount, long totalAmount, double ownershipRatio) {}
 }
