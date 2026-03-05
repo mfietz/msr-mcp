@@ -159,12 +159,8 @@ java -jar /path/to/msr-mcp-server.jar
 - Coupling ratio formula: `co_changes / MIN(total_changes_a, total_changes_b)`
 
 ### Rename tracking
-- `setDetectRenames(true)` on `DiffFormatter` — JGit detects by content similarity (≥60%)
-- On RENAME diff entry: `applyRenameInMemory(oldPath, newPath, coChanges, totalChanges)` fixes in-memory maps so coupling data follows the new name
-- After all flushes: `mergeRenames()` applies in chronological order:
-  - If old path and new path both have a `file_id`: `UPDATE file_changes SET file_id = newId WHERE file_id = oldId` + `DELETE FROM files WHERE file_id = oldId`
-  - If only old path has a `file_id` (no post-rename commits yet): `UPDATE files SET path = newPath WHERE path = oldPath`
-- Rename chains (A→B→C) resolve correctly because pairs are processed in commit order
+- Not supported. Renames appear as DELETE (old path) + ADD (new path) — history is split at the rename point.
+- `setDetectRenames` is deliberately not set on `DiffFormatter` (saves blob-content loading = significant RAM/CPU).
 
 ### Deleted file cleanup
 - After `LocCounter.count()` in `runFull()`: `deleteStaleMetrics()` removes `file_metrics` rows for paths no longer on disk
@@ -192,6 +188,47 @@ java -jar /path/to/msr-mcp-server.jar
 - No `sinceEpochMs`: fast path via pre-aggregated `file_coupling` table
 - With `sinceEpochMs`: CTE-based self-join on `file_changes` (correct but slower)
 
+## Performance profiling (JFR)
+
+The server auto-indexes on startup and exits when stdin closes — so `< /dev/null` gives a clean one-shot run:
+
+```bash
+cd /some/git/repo
+java -XX:StartFlightRecording=filename=/tmp/msr.jfr,settings=profile \
+     -jar /path/to/msr-mcp-server.jar < /dev/null 2>&1
+```
+
+Dump while running (useful for long indexes):
+```bash
+jcmd <PID> JFR.dump name=msr filename=/tmp/msr-now.jfr
+```
+
+Analyze:
+```bash
+jfr summary /tmp/msr.jfr          # event counts — GC volume is the first signal
+jfr print --events jdk.ObjectAllocationSample /tmp/msr.jfr | grep objectClass | sort | uniq -c | sort -rn | head -20
+
+# top CPU hotspot methods (top frame of each execution sample):
+jfr print --events jdk.ExecutionSample /tmp/msr.jfr | python3 -c "
+import sys, re
+from collections import Counter
+frames=[]; in_stack=False; current=[]
+for line in sys.stdin:
+    line=line.rstrip()
+    if 'stackTrace = [' in line: in_stack=True; current=[]
+    elif in_stack and line.strip()==']': in_stack=False; frames.append(current[0]) if current else None
+    elif in_stack and 'line:' in line:
+        m=re.search(r'(\S+\.\S+)\(', line)
+        if m: current.append(m.group(1))
+c=Counter(frames)
+[print(f'{n:6d}  {m}') for m,n in c.most_common(30)]
+"
+```
+
+DB state mid-run: `sqlite3 /path/to/.msr/msr.db "SELECT COUNT(*) FROM commits; SELECT COUNT(*) FROM file_changes;"`
+
+**Known hotspot (2026-03):** `String.split("\0",2)` in `applyRenameInMemory` + `flushCoupling` — O(pairs × renames). Fix: defer rename remapping to `mergeRenames()` + use `record PairKey` instead of string keys.
+
 ## Known risks / fixed bugs
 
 | Risk | Status |
@@ -205,5 +242,4 @@ java -jar /path/to/msr-mcp-server.jar
 | Server exits immediately | Fixed: removed `closeGracefully()` call after `build()` |
 | Schema migrations (new columns) | `ALTER TABLE commits ADD COLUMN …` in try-catch in `Database.open()` — SQLite throws on duplicate column, we ignore it |
 | Kotlin complexity via PMD | Not possible — PMD 7 Kotlin module has no metrics API; Kotlin gets LOC only |
-| Rename in same flush batch | Both old+new paths get file_ids in the same batch; `mergeRenames()` post-walk fixes this |
-| Rename to existing path (edge case) | File renamed to a path that already exists: `updatePath` silently no-ops (UNIQUE conflict) — accepted limitation |
+| Rename tracking | Deliberately not supported — renames split history at the rename point (acceptable for trend analysis) |

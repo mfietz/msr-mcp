@@ -28,7 +28,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.logging.Logger;
 
 /**
  * Walks the default branch (main → master → HEAD) of a git repository,
@@ -38,7 +37,6 @@ import java.util.logging.Logger;
 final class GitWalker {
 
     private static final int BATCH_SIZE = 500;
-    private static final Logger LOG = Logger.getLogger(GitWalker.class.getName());
     /** Commits touching more files than this are excluded from coupling (bulk refactors, merges). */
     static final int MAX_PATHS_FOR_COUPLING = 50;
 
@@ -103,7 +101,6 @@ final class GitWalker {
                 DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
                 df.setRepository(repo);
                 df.setDiffComparator(RawTextComparator.DEFAULT);
-                df.setDetectRenames(true);
                 formatters.add(df);
                 return df;
             });
@@ -111,7 +108,6 @@ final class GitWalker {
             Map<String, int[]> coChanges    = new HashMap<>();
             Map<String, int[]> totalChanges = new HashMap<>();
             Set<String> allChangedPaths     = new HashSet<>();
-            List<String[]> renames          = new ArrayList<>();
 
             List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
             List<ChangeEntry>  changeBatch  = new ArrayList<>(BATCH_SIZE * 4);
@@ -123,7 +119,7 @@ final class GitWalker {
                     window.add(commit);
                     if (window.size() == BATCH_SIZE) {
                         processWindow(window, repo, dfLocal, pool, commitBatch, changeBatch,
-                                      coChanges, totalChanges, renames, allChangedPaths);
+                                      coChanges, totalChanges, allChangedPaths);
                         processed += window.size();
                         window.clear();
                         System.err.printf("MSR:   %,d commits processed...%n", processed);
@@ -131,7 +127,7 @@ final class GitWalker {
                 }
                 if (!window.isEmpty()) {
                     processWindow(window, repo, dfLocal, pool, commitBatch, changeBatch,
-                                  coChanges, totalChanges, renames, allChangedPaths);
+                                  coChanges, totalChanges, allChangedPaths);
                     processed += window.size();
                 }
             } finally {
@@ -139,7 +135,6 @@ final class GitWalker {
                 formatters.forEach(DiffFormatter::close);
             }
             flushCoupling(coChanges, totalChanges);
-            mergeRenames(renames);
 
             return new WalkResult(processed, allChangedPaths);
         }
@@ -168,8 +163,7 @@ final class GitWalker {
 
     private record CommitDiff(RevCommit commit, List<EntryData> entries) {}
 
-    private record EntryData(String path, String oldPath, boolean isRename,
-                             int linesAdded, int linesDeleted) {}
+    private record EntryData(String path, int linesAdded, int linesDeleted) {}
 
     private static void accumulateCoChanges(List<String> paths, Map<String, int[]> coChanges) {
         int n = paths.size();
@@ -242,33 +236,6 @@ final class GitWalker {
     }
 
     /**
-     * Renames paths in the in-memory co-change and total-change maps so that
-     * coupling data accumulated for the old name is credited to the new name.
-     * Called immediately when a RENAME diff entry is encountered during the walk.
-     */
-    private static void applyRenameInMemory(String oldPath, String newPath,
-                                             Map<String, int[]> coChanges,
-                                             Map<String, int[]> totalChanges) {
-        int[] tc = totalChanges.remove(oldPath);
-        if (tc != null) totalChanges.merge(newPath, tc, (x, y) -> { x[0] += y[0]; return x; });
-
-        Map<String, int[]> updates = new HashMap<>();
-        Iterator<Map.Entry<String, int[]>> it = coChanges.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<String, int[]> e = it.next();
-            String[] parts = e.getKey().split("\0", 2);
-            String a = parts[0], b = parts[1];
-            if (!a.equals(oldPath) && !b.equals(oldPath)) continue;
-            it.remove();
-            if (a.equals(oldPath)) a = newPath;
-            if (b.equals(oldPath)) b = newPath;
-            if (a.compareTo(b) > 0) { String tmp = a; a = b; b = tmp; }
-            updates.merge(a + "\0" + b, e.getValue(), (x, y) -> { x[0] += y[0]; return x; });
-        }
-        coChanges.putAll(updates);
-    }
-
-    /**
      * Computes the diff for a single commit and returns serialisable data only.
      * Safe to call from any thread because the caller supplies its own {@code df}.
      * Exceptions inside individual entry processing are swallowed (best-effort).
@@ -279,9 +246,7 @@ final class GitWalker {
         try {
             for (DiffEntry entry : getDiffs(repo, commit, df)) {
                 boolean isDelete = entry.getChangeType() == DiffEntry.ChangeType.DELETE;
-                boolean isRename = entry.getChangeType() == DiffEntry.ChangeType.RENAME;
-                String path    = isDelete ? entry.getOldPath() : entry.getNewPath();
-                String oldPath = isRename ? entry.getOldPath() : null;
+                String path = isDelete ? entry.getOldPath() : entry.getNewPath();
                 int linesAdded = 0, linesDeleted = 0;
                 try {
                     for (Edit edit : df.toFileHeader(entry).toEditList()) {
@@ -289,7 +254,7 @@ final class GitWalker {
                         linesDeleted += edit.getEndA() - edit.getBeginA();
                     }
                 } catch (Exception ignored) {}
-                entries.add(new EntryData(path, oldPath, isRename, linesAdded, linesDeleted));
+                entries.add(new EntryData(path, linesAdded, linesDeleted));
             }
         } catch (Exception ignored) {}
         return new CommitDiff(commit, entries);
@@ -310,7 +275,7 @@ final class GitWalker {
             ThreadLocal<DiffFormatter> dfLocal, ExecutorService pool,
             List<CommitRecord> commitBatch, List<ChangeEntry> changeBatch,
             Map<String, int[]> coChanges, Map<String, int[]> totalChanges,
-            List<String[]> renames, Set<String> allChangedPaths) {
+            Set<String> allChangedPaths) {
 
         // Phase 1 — parallel diff computation
         List<Future<CommitDiff>> futures = new ArrayList<>(window.size());
@@ -344,10 +309,6 @@ final class GitWalker {
                 changedPaths.add(e.path());
                 totalChanges.computeIfAbsent(e.path(), k -> new int[1])[0]++;
                 allChangedPaths.add(e.path());
-                if (e.isRename()) {
-                    renames.add(new String[]{e.oldPath(), e.path()});
-                    applyRenameInMemory(e.oldPath(), e.path(), coChanges, totalChanges);
-                }
             }
 
             if (changedPaths.size() <= MAX_PATHS_FOR_COUPLING) {
@@ -356,32 +317,6 @@ final class GitWalker {
         }
 
         flush(commitBatch, changeBatch);
-    }
-
-    /**
-     * After all flushes, merges file history from old paths into new paths for each
-     * rename pair. Applied in chronological order so rename chains (A→B→C) resolve
-     * correctly. Each merge: re-points file_changes from oldId→newId, then removes
-     * the old files row.
-     */
-    private void mergeRenames(List<String[]> renames) {
-        if (renames.isEmpty()) return;
-        for (String[] pair : renames) {
-            String oldPath = pair[0], newPath = pair[1];
-            List<Long> oldIds = fileDao.findIdByPath(oldPath);
-            if (oldIds.isEmpty()) continue; // old path was never tracked
-            long oldId = oldIds.getFirst();
-            List<Long> newIds = fileDao.findIdByPath(newPath);
-            if (newIds.isEmpty()) {
-                // No post-rename commits for this path yet — just rename in place
-                fileDao.updatePath(oldPath, newPath);
-            } else {
-                long newId = newIds.getFirst();
-                fileChangeDao.updateFileId(oldId, newId);
-                fileDao.deleteById(oldId);
-                LOG.fine(() -> "Merged rename %s → %s (file_id %d → %d)".formatted(oldPath, newPath, oldId, newId));
-            }
-        }
     }
 
     /**

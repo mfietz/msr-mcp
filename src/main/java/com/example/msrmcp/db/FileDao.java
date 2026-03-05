@@ -19,14 +19,5 @@ public interface FileDao {
     @SqlQuery("SELECT path FROM files")
     List<String> findAllPaths();
 
-    @SqlQuery("SELECT file_id FROM files WHERE path = :path")
-    List<Long> findIdByPath(@Bind("path") String path);
-
-    @SqlUpdate("UPDATE files SET path = :newPath WHERE path = :oldPath")
-    void updatePath(@Bind("oldPath") String oldPath, @Bind("newPath") String newPath);
-
-    @SqlUpdate("DELETE FROM files WHERE file_id = :fileId")
-    void deleteById(@Bind("fileId") long fileId);
-
     record FileRecord(long fileId, String path) {}
 }
