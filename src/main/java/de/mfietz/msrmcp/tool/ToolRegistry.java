@@ -38,6 +38,7 @@ public final class ToolRegistry {
         GetBusFactorTool busFactor = new GetBusFactorTool(commitDao);
         GetChurnTool churn = new GetChurnTool(fileChangeDao);
         GetOwnershipTool ownership = new GetOwnershipTool(commitDao);
+        GetStaleFilesTool staleFiles = new GetStaleFilesTool(fileChangeDao, fileMetricsDao);
 
         return List.of(
                 new McpServerFeatures.SyncToolSpecification(
@@ -78,7 +79,11 @@ public final class ToolRegistry {
 
                 new McpServerFeatures.SyncToolSpecification(
                         GetOwnershipTool.toolSpec(),
-                        (exchange, req) -> ownership.handle(req.arguments()))
+                        (exchange, req) -> ownership.handle(req.arguments())),
+
+                new McpServerFeatures.SyncToolSpecification(
+                        GetStaleFilesTool.toolSpec(),
+                        (exchange, req) -> staleFiles.handle(req.arguments()))
         );
     }
 }
