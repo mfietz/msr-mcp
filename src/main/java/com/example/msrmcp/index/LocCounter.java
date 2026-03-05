@@ -6,8 +6,11 @@ import com.example.msrmcp.db.FileMetricsDao;
 import com.example.msrmcp.db.FileMetricsDao.FileMetricsIdRecord;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -89,17 +92,23 @@ final class LocCounter {
         return result;
     }
 
+    private static final int BUFFER_SIZE = 64 * 1024;
+
     private static int countLines(Path file) throws IOException {
-        byte[] bytes = Files.readAllBytes(file);
-        // Reject binary files: any null byte is a strong indicator
-        for (byte b : bytes) {
-            if (b == 0) throw new IOException("binary file");
+        try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ)) {
+            if (channel.size() == 0) return 0;
+            ByteBuffer buf = ByteBuffer.allocateDirect(BUFFER_SIZE);
+            int lines = 1;
+            while (channel.read(buf) > 0) {
+                buf.flip();
+                while (buf.hasRemaining()) {
+                    byte b = buf.get();
+                    if (b == 0) throw new IOException("binary file");
+                    if (b == '\n') lines++;
+                }
+                buf.clear();
+            }
+            return lines;
         }
-        if (bytes.length == 0) return 0;
-        int lines = 1;
-        for (byte b : bytes) {
-            if (b == '\n') lines++;
-        }
-        return lines;
     }
 }

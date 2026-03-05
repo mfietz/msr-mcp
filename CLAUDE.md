@@ -103,6 +103,12 @@ java -jar /path/to/msr-mcp-server.jar
 - `ServicesResourceTransformer` in shade config is critical for PMD language providers
 - PMD metrics API (CYCLO, COGNITIVE) is Java-only. Other languages get LOC only.
 
+### LocCounter implementation
+- Uses `FileChannel` + 64 KB direct `ByteBuffer` for streaming reads (avoids loading entire file into RAM)
+- Single pass: null-byte detection (binary skip) and newline counting happen in the same loop
+- Formula: `lines = 1 + count('\n')` — trailing newlines count as an extra line (consistent for both LF and CRLF)
+- Empty files return 0; binary files throw `IOException` and are silently skipped by the caller
+
 ### Multi-language support
 - `LocCounter` handles all text files (null-byte → binary → skipped)
 - `PmdRunner` processes only `.java` files (others get `cyclomaticComplexity=-1`)
