@@ -100,7 +100,8 @@ public interface CommitDao {
             FROM file_totals ft
             JOIN file_author_counts fac ON fac.file_id = ft.file_id
                                        AND fac.author_commits = ft.max_author_commits
-            JOIN files f ON f.file_id = ft.file_id
+            JOIN files f        ON f.file_id  = ft.file_id
+            JOIN file_metrics fm ON fm.file_id = ft.file_id
             WHERE CAST(ft.max_author_commits AS REAL) / ft.total_commits >= :threshold
               AND (:pathFilter IS NULL OR f.path LIKE :pathFilter)
             ORDER BY dominance_ratio DESC
@@ -132,7 +133,8 @@ public interface CommitDao {
             FROM file_totals ft
             JOIN file_author_counts fac ON fac.file_id = ft.file_id
                                         AND fac.author_amount = ft.max_author_amount
-            JOIN files f ON f.file_id = ft.file_id
+            JOIN files f        ON f.file_id  = ft.file_id
+            JOIN file_metrics fm ON fm.file_id = ft.file_id
             WHERE f.path LIKE :extensionPattern
               AND f.path LIKE :pathFilter
               AND CAST(fac.author_amount AS REAL) / ft.total_amount >= :minOwnership
@@ -167,7 +169,8 @@ public interface CommitDao {
             FROM file_totals ft
             JOIN file_author_lines fal ON fal.file_id = ft.file_id
                                        AND fal.author_amount = ft.max_author_amount
-            JOIN files f ON f.file_id = ft.file_id
+            JOIN files f        ON f.file_id  = ft.file_id
+            JOIN file_metrics fm ON fm.file_id = ft.file_id
             WHERE f.path LIKE :extensionPattern
               AND f.path LIKE :pathFilter
               AND CAST(fal.author_amount AS REAL) / ft.total_amount >= :minOwnership

@@ -24,6 +24,7 @@ public interface FileChangeDao {
             FROM file_changes fc
             JOIN files f ON f.file_id = fc.file_id
             JOIN commits c ON c.commit_id = fc.commit_id
+            JOIN file_metrics fm ON fm.file_id = fc.file_id
             JOIN (
                 SELECT fc2.file_id,
                        MIN(c2.author_date) AS first_commit_ms,
@@ -90,8 +91,9 @@ public interface FileChangeDao {
                    SUM(fc.lines_added + fc.lines_deleted) AS churn,
                    COUNT(DISTINCT fc.commit_id) AS change_frequency
             FROM file_changes fc
-            JOIN files f   ON f.file_id    = fc.file_id
-            JOIN commits c ON c.commit_id  = fc.commit_id
+            JOIN files f        ON f.file_id   = fc.file_id
+            JOIN commits c      ON c.commit_id = fc.commit_id
+            JOIN file_metrics fm ON fm.file_id  = fc.file_id
             WHERE (:sinceEpochMs IS NULL OR c.author_date >= :sinceEpochMs)
               AND f.path LIKE :extensionPattern
               AND f.path LIKE :pathFilter
