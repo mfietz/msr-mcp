@@ -118,6 +118,7 @@ final class GitWalker {
 
             List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
             List<ChangeEntry> changeBatch = new ArrayList<>(BATCH_SIZE * 4);
+            Map<String, String> pendingRenames = new HashMap<>();
             int processed = 0;
 
             List<RevCommit> window = new ArrayList<>(BATCH_SIZE);
@@ -134,7 +135,8 @@ final class GitWalker {
                                 changeBatch,
                                 coChanges,
                                 totalChanges,
-                                allChangedPaths);
+                                allChangedPaths,
+                                pendingRenames);
                         processed += window.size();
                         window.clear();
                         System.err.printf("MSR:   %,d commits processed...%n", processed);
@@ -150,7 +152,8 @@ final class GitWalker {
                             changeBatch,
                             coChanges,
                             totalChanges,
-                            allChangedPaths);
+                            allChangedPaths,
+                            pendingRenames);
                     processed += window.size();
                 }
             } finally {
@@ -186,7 +189,77 @@ final class GitWalker {
 
     private record CommitDiff(RevCommit commit, List<EntryData> entries) {}
 
-    private record EntryData(String path, int linesAdded, int linesDeleted, boolean isDelete, boolean isAdd) {}
+    private record EntryData(
+            String path, int linesAdded, int linesDeleted, boolean isDelete, boolean isAdd) {}
+
+    /**
+     * Finds unambiguous rename pairs within a single commit's diff entries. A rename is a DELETE
+     * and an ADD that share the same filename (basename), with exactly one candidate on each side.
+     *
+     * @return map of oldPath → newPath
+     */
+    private static Map<String, String> detectRenames(List<EntryData> entries) {
+        Map<String, List<String>> deletedByName = new HashMap<>();
+        Map<String, List<String>> addedByName = new HashMap<>();
+        for (EntryData e : entries) {
+            String name = Path.of(e.path()).getFileName().toString();
+            if (e.isDelete()) {
+                deletedByName.computeIfAbsent(name, k -> new ArrayList<>()).add(e.path());
+            } else if (e.isAdd()) {
+                addedByName.computeIfAbsent(name, k -> new ArrayList<>()).add(e.path());
+            }
+        }
+        Map<String, String> renames = new HashMap<>();
+        for (var entry : deletedByName.entrySet()) {
+            if (entry.getValue().size() != 1) continue; // ambiguous
+            List<String> adds = addedByName.get(entry.getKey());
+            if (adds != null && adds.size() == 1) {
+                renames.put(entry.getValue().getFirst(), adds.getFirst());
+            }
+        }
+        return renames;
+    }
+
+    /**
+     * Renames all keys referencing {@code oldPath} to {@code newPath} in the in-memory accumulation
+     * maps. Prevents ghost file_id creation at coupling flush.
+     */
+    private static void applyRenamesInMemory(
+            Map<String, String> renames,
+            Map<String, int[]> totalChanges,
+            Map<String, int[]> coChanges) {
+        for (var rename : renames.entrySet()) {
+            String oldPath = rename.getKey();
+            String newPath = rename.getValue();
+
+            // totalChanges: simple key swap
+            int[] count = totalChanges.remove(oldPath);
+            if (count != null) totalChanges.put(newPath, count);
+
+            // coChanges: scan all keys, replace oldPath with newPath, merge on collision
+            Map<String, int[]> updated = new HashMap<>();
+            for (var e : coChanges.entrySet()) {
+                String key = e.getKey();
+                String[] parts = key.split("\0", 2);
+                String a = parts[0].equals(oldPath) ? newPath : parts[0];
+                String b = parts[1].equals(oldPath) ? newPath : parts[1];
+                if (a.compareTo(b) > 0) {
+                    String tmp = a;
+                    a = b;
+                    b = tmp;
+                }
+                updated.merge(
+                        a + "\0" + b,
+                        e.getValue(),
+                        (v1, v2) -> {
+                            v1[0] += v2[0];
+                            return v1;
+                        });
+            }
+            coChanges.clear();
+            coChanges.putAll(updated);
+        }
+    }
 
     private static void accumulateCoChanges(List<String> paths, Map<String, int[]> coChanges) {
         int n = paths.size();
@@ -204,7 +277,17 @@ final class GitWalker {
         }
     }
 
-    private void flush(List<CommitRecord> commitBatch, List<ChangeEntry> changeBatch) {
+    private void flush(
+            List<CommitRecord> commitBatch,
+            List<ChangeEntry> changeBatch,
+            Map<String, String> pendingRenames) {
+        // Apply renames: UPDATE files SET path = newPath WHERE path = oldPath.
+        // Must run before resolvePaths so the new path inherits the existing file_id.
+        for (var rename : pendingRenames.entrySet()) {
+            fileDao.updatePath(rename.getKey(), rename.getValue());
+        }
+        pendingRenames.clear();
+
         if (!commitBatch.isEmpty()) commitDao.insertBatch(commitBatch);
         if (!changeBatch.isEmpty()) {
             // Resolve commit hashes → IDs
@@ -313,7 +396,8 @@ final class GitWalker {
             List<ChangeEntry> changeBatch,
             Map<String, int[]> coChanges,
             Map<String, int[]> totalChanges,
-            Set<String> allChangedPaths) {
+            Set<String> allChangedPaths,
+            Map<String, String> pendingRenames) {
 
         // Phase 1 — parallel diff computation
         List<Future<CommitDiff>> futures = new ArrayList<>(window.size());
@@ -343,8 +427,18 @@ final class GitWalker {
                     new CommitRecord(
                             hash, authorDate, firstLine, jiraSlug, authorEmail, authorName));
 
+            // Detect renames for this commit: DELETE+ADD pairs sharing the same basename
+            Map<String, String> commitRenames = detectRenames(cd.entries());
+            if (!commitRenames.isEmpty()) {
+                applyRenamesInMemory(commitRenames, totalChanges, coChanges);
+                pendingRenames.putAll(commitRenames);
+            }
+
             List<String> changedPaths = new ArrayList<>(cd.entries().size());
             for (EntryData e : cd.entries()) {
+                if (e.isDelete() && commitRenames.containsKey(e.path())) {
+                    continue; // suppress: this DELETE is the old side of a rename
+                }
                 changeBatch.add(new ChangeEntry(hash, e.path(), e.linesAdded(), e.linesDeleted()));
                 changedPaths.add(e.path());
                 totalChanges.computeIfAbsent(e.path(), k -> new int[1])[0]++;
@@ -356,7 +450,7 @@ final class GitWalker {
             }
         }
 
-        flush(commitBatch, changeBatch);
+        flush(commitBatch, changeBatch, pendingRenames);
     }
 
     /**
