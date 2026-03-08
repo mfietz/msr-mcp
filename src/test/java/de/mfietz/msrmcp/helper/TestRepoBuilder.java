@@ -140,6 +140,27 @@ public final class TestRepoBuilder {
         }
     }
 
+    /**
+     * Appends a commit that deletes {@code oldPath} and adds {@code newPath} with the given content
+     * — simulating a file rename/move.
+     */
+    public static void appendRename(
+            Path repoDir, String message, String oldPath, String newPath, String content)
+            throws Exception {
+        try (Git git = Git.open(repoDir.toFile())) {
+            // Delete old file
+            git.rm().addFilepattern(oldPath).call();
+            // Add new file
+            Path target = repoDir.resolve(newPath);
+            Files.createDirectories(target.getParent());
+            Files.writeString(target, content);
+            git.add().addFilepattern(newPath).call();
+
+            PersonIdent author = new PersonIdent("Test Author", "test@example.com");
+            git.commit().setMessage(message).setAuthor(author).setCommitter(author).call();
+        }
+    }
+
     /** Recursively delete a directory (for @AfterAll cleanup). */
     public static void deleteRecursively(Path dir) throws IOException {
         if (dir == null || !Files.exists(dir)) return;
