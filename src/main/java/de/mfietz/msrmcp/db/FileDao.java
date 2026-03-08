@@ -5,6 +5,7 @@ import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.customizer.BindList;
 import org.jdbi.v3.sqlobject.statement.SqlBatch;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
+import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 
 public interface FileDao {
 
@@ -16,6 +17,9 @@ public interface FileDao {
 
     @SqlQuery("SELECT path FROM files")
     List<String> findAllPaths();
+
+    @SqlUpdate("UPDATE files SET path = :newPath WHERE path = :oldPath")
+    void updatePath(@Bind("oldPath") String oldPath, @Bind("newPath") String newPath);
 
     record FileRecord(long fileId, String path) {}
 }
