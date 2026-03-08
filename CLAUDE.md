@@ -201,8 +201,12 @@ Conventions observed in this codebase:
 - Coupling ratio formula: `co_changes / MIN(total_changes_a, total_changes_b)`
 
 ### Rename tracking
-- Not supported. Renames appear as DELETE (old path) + ADD (new path) — history is split at the rename point.
-- `setDetectRenames` is deliberately not set on `DiffFormatter` (saves blob-content loading = significant RAM/CPU).
+- Heuristic detection: per-commit DELETE+ADD pairs sharing the same basename (unambiguous 1:1 only)
+- When detected: `files.path` is updated in-place via `FileDao.updatePath` — old `file_id` is preserved
+- `changeBatch` entries are rewritten in `flush()` so `resolvePaths` never re-inserts the old path
+- In-memory maps (`totalChanges`, `coChanges`) are rekeyed before the batch is flushed
+- Multi-commit chains (A→B→C) and ambiguous basenames (two files same name) are NOT detected
+- Does NOT use JGit `setDetectRenames` — our heuristic handles the common case without content loading
 
 ### Deleted file cleanup
 - After `LocCounter.count()` in `runFull()`: `deleteStaleMetrics()` removes `file_metrics` rows for paths no longer on disk
@@ -284,4 +288,4 @@ DB state mid-run: `sqlite3 /path/to/.msr/msr.db "SELECT COUNT(*) FROM commits; S
 | Server exits immediately | Fixed: removed `closeGracefully()` call after `build()` |
 | Schema migrations (new columns) | `ALTER TABLE commits ADD COLUMN …` in try-catch in `Database.open()` — SQLite throws on duplicate column, we ignore it |
 | Kotlin complexity via PMD | Not possible — PMD 7 Kotlin module has no metrics API; Kotlin gets LOC only |
-| Rename tracking | Deliberately not supported — renames split history at the rename point (acceptable for trend analysis) |
+| Rename tracking | Supported via basename-heuristic: unambiguous 1:1 DELETE+ADD pairs per commit update `files.path` in-place |
