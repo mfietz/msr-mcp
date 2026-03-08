@@ -6,7 +6,7 @@
 
   <groupId>de.mfietz</groupId>
   <artifactId>msr-mcp-server</artifactId>
-  <version>1.2.1</version>
+  <version>1.2.2</version>
   <packaging>jar</packaging>
 
   <name>MSR MCP Server</name>
