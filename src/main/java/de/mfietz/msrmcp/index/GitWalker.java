@@ -186,7 +186,7 @@ final class GitWalker {
 
     private record CommitDiff(RevCommit commit, List<EntryData> entries) {}
 
-    private record EntryData(String path, int linesAdded, int linesDeleted) {}
+    private record EntryData(String path, int linesAdded, int linesDeleted, boolean isDelete, boolean isAdd) {}
 
     private static void accumulateCoChanges(List<String> paths, Map<String, int[]> coChanges) {
         int n = paths.size();
@@ -278,6 +278,7 @@ final class GitWalker {
         try {
             for (DiffEntry entry : getDiffs(repo, commit, df)) {
                 boolean isDelete = entry.getChangeType() == DiffEntry.ChangeType.DELETE;
+                boolean isAdd = entry.getChangeType() == DiffEntry.ChangeType.ADD;
                 String path = isDelete ? entry.getOldPath() : entry.getNewPath();
                 int linesAdded = 0, linesDeleted = 0;
                 try {
@@ -287,7 +288,7 @@ final class GitWalker {
                     }
                 } catch (Exception ignored) {
                 }
-                entries.add(new EntryData(path, linesAdded, linesDeleted));
+                entries.add(new EntryData(path, linesAdded, linesDeleted, isDelete, isAdd));
             }
         } catch (Exception ignored) {
         }
