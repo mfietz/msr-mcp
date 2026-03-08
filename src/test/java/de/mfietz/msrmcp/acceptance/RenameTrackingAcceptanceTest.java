@@ -49,6 +49,7 @@ class RenameTrackingAcceptanceTest {
 
     @AfterAll
     void tearDown() throws Exception {
+        if (db != null) db.close();
         TestRepoBuilder.deleteRecursively(repoDir);
     }
 

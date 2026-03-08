@@ -137,6 +137,11 @@ public final class Database {
         return jdbi.onDemand(daoType);
     }
 
+    /** Checkpoints the WAL and releases any lingering SQLite resources. */
+    public void close() {
+        jdbi.useHandle(h -> h.execute("PRAGMA wal_checkpoint(TRUNCATE)"));
+    }
+
     /**
      * Drops the 8 analytical (query-only) indexes to speed up bulk inserts. Call before a full
      * re-index; restore with {@link #createAnalyticalIndexes()} after. Safe to call multiple times
