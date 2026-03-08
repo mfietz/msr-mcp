@@ -443,12 +443,16 @@ final class GitWalker {
             // Detect renames for this commit: DELETE+ADD pairs sharing the same basename
             Map<String, String> commitRenames = detectRenames(cd.entries());
             if (!commitRenames.isEmpty()) {
-                // Skip renames where the target path already exists in files —
-                // those are independent pre-existing files, not rename targets.
+                // Skip renames where the target path is already a known file — either indexed
+                // in a previous batch (DB check) or seen earlier in this batch (changeBatch check).
+                // Such paths are independent pre-existing files, not rename targets.
                 Set<String> existingPaths = new HashSet<>();
                 for (FileDao.FileRecord r :
                         fileDao.findByPaths(new ArrayList<>(commitRenames.values()))) {
                     existingPaths.add(r.path());
+                }
+                for (ChangeEntry ce : changeBatch) {
+                    existingPaths.add(ce.path());
                 }
                 commitRenames.entrySet().removeIf(e -> existingPaths.contains(e.getValue()));
             }
