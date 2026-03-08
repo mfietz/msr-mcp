@@ -286,6 +286,19 @@ final class GitWalker {
         for (var rename : pendingRenames.entrySet()) {
             fileDao.updatePath(rename.getKey(), rename.getValue());
         }
+
+        // Rewrite changeBatch entries so pre-rename paths become the canonical new path.
+        // Without this, resolvePaths would re-insert the old path as a new files row.
+        if (!pendingRenames.isEmpty()) {
+            changeBatch.replaceAll(
+                    e -> {
+                        String mapped = pendingRenames.get(e.path());
+                        return mapped != null
+                                ? new ChangeEntry(
+                                        e.hash(), mapped, e.linesAdded(), e.linesDeleted())
+                                : e;
+                    });
+        }
         pendingRenames.clear();
 
         if (!commitBatch.isEmpty()) commitDao.insertBatch(commitBatch);
