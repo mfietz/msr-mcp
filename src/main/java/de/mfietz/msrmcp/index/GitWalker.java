@@ -137,7 +137,7 @@ final class GitWalker {
                             () -> {
                                 DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
                                 df.setRepository(repo);
-                                df.setDiffComparator(RawTextComparator.DEFAULT);
+                                df.setDiffComparator(RawTextComparator.WS_IGNORE_ALL);
                                 df.setContext(0);
                                 formatters.add(df);
                                 return df;
@@ -263,7 +263,7 @@ final class GitWalker {
 
     private record ChangeEntry(String hash, String path, int linesAdded, int linesDeleted) {}
 
-    private record CommitDiff(RevCommit commit, List<EntryData> entries) {}
+    private record CommitDiff(RevCommit commit, List<EntryData> entries, boolean isMerge) {}
 
     private record EntryData(
             String path, int linesAdded, int linesDeleted, boolean isDelete, boolean isAdd) {}
@@ -447,6 +447,7 @@ final class GitWalker {
      */
     private static CommitDiff computeCommitDiff(
             Repository repo, RevCommit commit, DiffFormatter df) {
+        boolean isMerge = commit.getParentCount() > 1;
         List<EntryData> entries = new ArrayList<>();
         try {
             for (DiffEntry entry : getDiffs(repo, commit, df)) {
@@ -454,7 +455,7 @@ final class GitWalker {
                 boolean isAdd = entry.getChangeType() == DiffEntry.ChangeType.ADD;
                 String path = isDelete ? entry.getOldPath() : entry.getNewPath();
                 int linesAdded = 0, linesDeleted = 0;
-                if (!isBinaryPath(path)) {
+                if (!isMerge && !isBinaryPath(path)) {
                     try {
                         for (Edit edit : df.toFileHeader(entry).toEditList()) {
                             linesAdded += edit.getEndB() - edit.getBeginB();
@@ -467,7 +468,7 @@ final class GitWalker {
             }
         } catch (Exception ignored) {
         }
-        return new CommitDiff(commit, entries);
+        return new CommitDiff(commit, entries, isMerge);
     }
 
     /**
@@ -551,7 +552,7 @@ final class GitWalker {
                 allChangedPaths.add(e.path());
             }
 
-            if (changedPaths.size() <= MAX_PATHS_FOR_COUPLING) {
+            if (!cd.isMerge() && changedPaths.size() <= MAX_PATHS_FOR_COUPLING) {
                 accumulateCoChanges(changedPaths, coChanges);
             }
         }
