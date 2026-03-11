@@ -46,20 +46,69 @@ final class GitWalker {
     private static final Set<String> BINARY_EXTENSIONS =
             Set.of(
                     // images
-                    "png", "jpg", "jpeg", "gif", "bmp", "ico", "tiff", "webp", "svg", "psd",
-                    "ai", "eps",
+                    "png",
+                    "jpg",
+                    "jpeg",
+                    "gif",
+                    "bmp",
+                    "ico",
+                    "tiff",
+                    "webp",
+                    "svg",
+                    "psd",
+                    "ai",
+                    "eps",
                     // fonts
-                    "ttf", "otf", "woff", "woff2", "eot",
+                    "ttf",
+                    "otf",
+                    "woff",
+                    "woff2",
+                    "eot",
                     // archives / binaries
-                    "zip", "jar", "war", "ear", "tar", "gz", "bz2", "xz", "7z", "rar",
+                    "zip",
+                    "jar",
+                    "war",
+                    "ear",
+                    "tar",
+                    "gz",
+                    "bz2",
+                    "xz",
+                    "7z",
+                    "rar",
                     // compiled
-                    "class", "pyc", "o", "obj", "exe", "dll", "so", "dylib", "lib",
+                    "class",
+                    "pyc",
+                    "o",
+                    "obj",
+                    "exe",
+                    "dll",
+                    "so",
+                    "dylib",
+                    "lib",
                     // documents
-                    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+                    "pdf",
+                    "doc",
+                    "docx",
+                    "xls",
+                    "xlsx",
+                    "ppt",
+                    "pptx",
                     // media
-                    "mp3", "mp4", "wav", "ogg", "flac", "avi", "mov", "mkv",
+                    "mp3",
+                    "mp4",
+                    "wav",
+                    "ogg",
+                    "flac",
+                    "avi",
+                    "mov",
+                    "mkv",
                     // data
-                    "db", "sqlite", "sqlite3", "bin", "dat", "proto");
+                    "db",
+                    "sqlite",
+                    "sqlite3",
+                    "bin",
+                    "dat",
+                    "proto");
 
     private static boolean isBinaryPath(String path) {
         int dot = path.lastIndexOf('.');
@@ -104,6 +153,7 @@ final class GitWalker {
      * boundary without scanning the entire history.
      */
     WalkResult walk(String stopAtHash) throws IOException {
+        MailMap mailMap = MailMap.load(repoDir);
         try (Git git = Git.open(repoDir.toFile());
                 RevWalk revWalk = new RevWalk(git.getRepository())) {
 
@@ -165,6 +215,7 @@ final class GitWalker {
                                 repo,
                                 dfLocal,
                                 pool,
+                                mailMap,
                                 commitBatch,
                                 changeBatch,
                                 coChanges,
@@ -182,6 +233,7 @@ final class GitWalker {
                             repo,
                             dfLocal,
                             pool,
+                            mailMap,
                             commitBatch,
                             changeBatch,
                             coChanges,
@@ -208,17 +260,15 @@ final class GitWalker {
     }
 
     /**
-     * Sums the sizes of all pack files (File.length() only — no I/O into pack content).
-     * Used to right-size the JGit window cache before the walk.
+     * Sums the sizes of all pack files (File.length() only — no I/O into pack content). Used to
+     * right-size the JGit window cache before the walk.
      */
     private record RepoSizeHint(int fileCount, long packBytes) {}
 
     private static RepoSizeHint probeRepoSize(Repository repo) {
         long packBytes = 0;
-        java.io.File packDir =
-                new java.io.File(repo.getDirectory(), "objects/pack");
-        java.io.File[] packs =
-                packDir.listFiles((d, n) -> n.endsWith(".pack"));
+        java.io.File packDir = new java.io.File(repo.getDirectory(), "objects/pack");
+        java.io.File[] packs = packDir.listFiles((d, n) -> n.endsWith(".pack"));
         if (packs != null) {
             for (java.io.File p : packs) packBytes += p.length();
         }
@@ -292,8 +342,8 @@ final class GitWalker {
     }
 
     /**
-     * Follows a rename chain to its final canonical path. Handles multi-hop renames within the
-     * same window (A→B in commit 100, B→C in commit 200 → resolves A to C).
+     * Follows a rename chain to its final canonical path. Handles multi-hop renames within the same
+     * window (A→B in commit 100, B→C in commit 200 → resolves A to C).
      */
     private static String resolveRename(Map<String, String> renames, String path) {
         String next;
@@ -303,8 +353,8 @@ final class GitWalker {
     }
 
     /**
-     * Applies accumulated renames to the in-memory maps. Called once per window (not per commit)
-     * to amortise the O(coChanges) scan across all renames in the batch.
+     * Applies accumulated renames to the in-memory maps. Called once per window (not per commit) to
+     * amortise the O(coChanges) scan across all renames in the batch.
      */
     private static void applyRenamesInMemory(
             Map<String, String> renames,
@@ -315,10 +365,13 @@ final class GitWalker {
             String canonical = resolveRename(renames, rename.getKey());
             int[] count = totalChanges.remove(rename.getKey());
             if (count != null) {
-                totalChanges.merge(canonical, count, (v1, v2) -> {
-                    v1[0] += v2[0];
-                    return v1;
-                });
+                totalChanges.merge(
+                        canonical,
+                        count,
+                        (v1, v2) -> {
+                            v1[0] += v2[0];
+                            return v1;
+                        });
             }
         }
 
@@ -495,6 +548,7 @@ final class GitWalker {
             Repository repo,
             ThreadLocal<DiffFormatter> dfLocal,
             ExecutorService pool,
+            MailMap mailMap,
             List<CommitRecord> commitBatch,
             List<ChangeEntry> changeBatch,
             Map<String, int[]> coChanges,
@@ -526,8 +580,12 @@ final class GitWalker {
             long authorDate = commit.getAuthorIdent().getWhen().getTime();
             String firstLine = commit.getShortMessage();
             String jiraSlug = JiraSlugExtractor.extract(firstLine);
-            String authorEmail = commit.getAuthorIdent().getEmailAddress();
-            String authorName = commit.getAuthorIdent().getName();
+            MailMap.Identity author =
+                    mailMap.resolve(
+                            commit.getAuthorIdent().getName(),
+                            commit.getAuthorIdent().getEmailAddress());
+            String authorEmail = author.email();
+            String authorName = author.name();
 
             commitBatch.add(
                     new CommitRecord(
