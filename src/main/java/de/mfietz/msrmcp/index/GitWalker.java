@@ -24,8 +24,10 @@ import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevSort;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.storage.file.WindowCacheConfig;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
+import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 
 /**
@@ -41,6 +43,30 @@ final class GitWalker {
      * Commits touching more files than this are excluded from coupling (bulk refactors, merges).
      */
     static final int MAX_PATHS_FOR_COUPLING = 50;
+
+    private static final Set<String> BINARY_EXTENSIONS =
+            Set.of(
+                    // images
+                    "png", "jpg", "jpeg", "gif", "bmp", "ico", "tiff", "webp", "svg", "psd",
+                    "ai", "eps",
+                    // fonts
+                    "ttf", "otf", "woff", "woff2", "eot",
+                    // archives / binaries
+                    "zip", "jar", "war", "ear", "tar", "gz", "bz2", "xz", "7z", "rar",
+                    // compiled
+                    "class", "pyc", "o", "obj", "exe", "dll", "so", "dylib", "lib",
+                    // documents
+                    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+                    // media
+                    "mp3", "mp4", "wav", "ogg", "flac", "avi", "mov", "mkv",
+                    // data
+                    "db", "sqlite", "sqlite3", "bin", "dat", "proto");
+
+    private static boolean isBinaryPath(String path) {
+        int dot = path.lastIndexOf('.');
+        if (dot < 0) return false;
+        return BINARY_EXTENSIONS.contains(path.substring(dot + 1).toLowerCase());
+    }
 
     private final Path repoDir;
     private final CommitDao commitDao;
@@ -87,6 +113,10 @@ final class GitWalker {
             ObjectId headId = resolveDefaultBranch(repo);
             if (headId == null) return new WalkResult(0, Set.of());
 
+            // Probe repo size to right-size caches and maps
+            RepoSizeHint hint = probeRepoSize(repo, headId);
+            applyWindowCache(hint.packBytes());
+
             revWalk.markStart(revWalk.parseCommit(headId));
 
             if (stopAtHash != null) {
@@ -108,13 +138,18 @@ final class GitWalker {
                                 DiffFormatter df = new DiffFormatter(DisabledOutputStream.INSTANCE);
                                 df.setRepository(repo);
                                 df.setDiffComparator(RawTextComparator.DEFAULT);
+                                df.setContext(0);
                                 formatters.add(df);
                                 return df;
                             });
 
-            Map<String, int[]> coChanges = new HashMap<>();
-            Map<String, int[]> totalChanges = new HashMap<>();
-            Set<String> allChangedPaths = new HashSet<>();
+            // Size maps based on the number of tracked files:
+            // totalChanges: one entry per unique file path — use file count directly
+            // coChanges: file pairs — heuristically ~10x file count (sparse in practice)
+            int fileCount = hint.fileCount();
+            Map<String, int[]> coChanges = new HashMap<>(Math.max(16, fileCount * 10));
+            Map<String, int[]> totalChanges = new HashMap<>(Math.max(16, fileCount * 2));
+            Set<String> allChangedPaths = new HashSet<>(Math.max(16, fileCount * 2));
 
             List<CommitRecord> commitBatch = new ArrayList<>(BATCH_SIZE);
             List<ChangeEntry> changeBatch = new ArrayList<>(BATCH_SIZE * 4);
@@ -171,6 +206,47 @@ final class GitWalker {
         if (id == null) id = repo.resolve("refs/heads/master");
         if (id == null) id = repo.resolve(Constants.HEAD);
         return id;
+    }
+
+    /**
+     * Counts the number of files in the HEAD tree (pure in-memory tree traversal, no blob loading)
+     * and sums the sizes of all pack files. Used to right-size caches and maps before the walk.
+     */
+    private record RepoSizeHint(int fileCount, long packBytes) {}
+
+    private static RepoSizeHint probeRepoSize(Repository repo, ObjectId headId) throws IOException {
+        int fileCount = 0;
+        try (TreeWalk tw = new TreeWalk(repo)) {
+            RevCommit head = repo.parseCommit(headId);
+            tw.addTree(head.getTree());
+            tw.setRecursive(true);
+            while (tw.next()) fileCount++;
+        }
+
+        long packBytes = 0;
+        java.io.File packDir =
+                new java.io.File(repo.getDirectory(), "objects/pack");
+        java.io.File[] packs =
+                packDir.listFiles((d, n) -> n.endsWith(".pack"));
+        if (packs != null) {
+            for (java.io.File p : packs) packBytes += p.length();
+        }
+
+        return new RepoSizeHint(fileCount, packBytes);
+    }
+
+    /**
+     * Configures JGit's global pack-file window cache to fit the repo's pack data, clamped between
+     * the JGit default (128 MB) and a reasonable maximum (512 MB). Small repos stay at the default;
+     * large repos get a larger cache, reducing evictions and disk re-reads.
+     */
+    private static void applyWindowCache(long packBytes) {
+        long minBytes = 128L * 1024 * 1024;
+        long maxBytes = 512L * 1024 * 1024;
+        long target = Math.min(Math.max(packBytes, minBytes), maxBytes);
+        WindowCacheConfig cfg = new WindowCacheConfig();
+        cfg.setPackedGitLimit(target);
+        cfg.install();
     }
 
     private static List<DiffEntry> getDiffs(Repository repo, RevCommit commit, DiffFormatter df)
@@ -331,16 +407,18 @@ final class GitWalker {
         // Collect all unique paths from coupling data
         Set<String> allPaths = new HashSet<>();
         for (var entry : coChanges.entrySet()) {
-            String[] parts = entry.getKey().split("\0", 2);
-            allPaths.add(parts[0]);
-            allPaths.add(parts[1]);
+            String key = entry.getKey();
+            int sep = key.indexOf('\0');
+            allPaths.add(key.substring(0, sep));
+            allPaths.add(key.substring(sep + 1));
         }
         Map<String, Long> pathToId = resolvePaths(new ArrayList<>(allPaths));
 
         List<FileCouplingIdRecord> records = new ArrayList<>(coChanges.size());
         for (var entry : coChanges.entrySet()) {
-            String[] parts = entry.getKey().split("\0", 2);
-            String a = parts[0], b = parts[1];
+            String key = entry.getKey();
+            int sep = key.indexOf('\0');
+            String a = key.substring(0, sep), b = key.substring(sep + 1);
             int co = entry.getValue()[0];
             int ta = totalChanges.getOrDefault(a, new int[] {0})[0];
             int tb = totalChanges.getOrDefault(b, new int[] {0})[0];
@@ -376,12 +454,14 @@ final class GitWalker {
                 boolean isAdd = entry.getChangeType() == DiffEntry.ChangeType.ADD;
                 String path = isDelete ? entry.getOldPath() : entry.getNewPath();
                 int linesAdded = 0, linesDeleted = 0;
-                try {
-                    for (Edit edit : df.toFileHeader(entry).toEditList()) {
-                        linesAdded += edit.getEndB() - edit.getBeginB();
-                        linesDeleted += edit.getEndA() - edit.getBeginA();
+                if (!isBinaryPath(path)) {
+                    try {
+                        for (Edit edit : df.toFileHeader(entry).toEditList()) {
+                            linesAdded += edit.getEndB() - edit.getBeginB();
+                            linesDeleted += edit.getEndA() - edit.getBeginA();
+                        }
+                    } catch (Exception ignored) {
                     }
-                } catch (Exception ignored) {
                 }
                 entries.add(new EntryData(path, linesAdded, linesDeleted, isDelete, isAdd));
             }
