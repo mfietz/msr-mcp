@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mfietz.msrmcp.db.*;
 import de.mfietz.msrmcp.helper.TestRepoBuilder;
+import de.mfietz.msrmcp.index.IndexTracker;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.tool.GetSummaryTool;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
@@ -42,12 +43,16 @@ class GetSummaryAcceptanceTest {
         Database db = Database.open(repoDir.resolve(".msr/msr.db"));
         Indexer.runFull(repoDir, db);
 
+        IndexTracker tracker = new IndexTracker();
+        tracker.markIndexing();
+        tracker.markReady(0L);
         summaryTool =
                 new GetSummaryTool(
                         db.attach(CommitDao.class),
                         db.attach(FileChangeDao.class),
                         db.attach(FileMetricsDao.class),
-                        db.attach(FileDao.class));
+                        db.attach(FileDao.class),
+                        tracker);
     }
 
     @AfterAll

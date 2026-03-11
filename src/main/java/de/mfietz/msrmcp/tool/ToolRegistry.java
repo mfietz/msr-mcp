@@ -1,6 +1,7 @@
 package de.mfietz.msrmcp.tool;
 
 import de.mfietz.msrmcp.db.*;
+import de.mfietz.msrmcp.index.IndexTracker;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import java.nio.file.Path;
 import java.util.List;
@@ -19,7 +20,8 @@ public final class ToolRegistry {
             FileMetricsDao fileMetricsDao,
             FileCouplingDao fileCouplingDao,
             Path repoDir,
-            Database db) {
+            Database db,
+            IndexTracker tracker) {
 
         FileDao fileDao = db.attach(FileDao.class);
 
@@ -28,8 +30,9 @@ public final class ToolRegistry {
                 new GetTemporalCouplingTool(fileCouplingDao, fileChangeDao);
         GetFileCommitHistoryTool history = new GetFileCommitHistoryTool(commitDao, fileChangeDao);
         RefreshIndexTool refresh = new RefreshIndexTool(repoDir, db);
+        GetIndexStatusTool indexStatus = new GetIndexStatusTool(tracker);
         GetSummaryTool summary =
-                new GetSummaryTool(commitDao, fileChangeDao, fileMetricsDao, fileDao);
+                new GetSummaryTool(commitDao, fileChangeDao, fileMetricsDao, fileDao, tracker);
         GetFileCouplingTool fileCoupling = new GetFileCouplingTool(fileCouplingDao);
         GetFileAuthorsTool fileAuthors = new GetFileAuthorsTool(commitDao);
         GetBusFactorTool busFactor = new GetBusFactorTool(commitDao);
@@ -38,6 +41,9 @@ public final class ToolRegistry {
         GetStaleFilesTool staleFiles = new GetStaleFilesTool(fileChangeDao, fileMetricsDao);
 
         return List.of(
+                new McpServerFeatures.SyncToolSpecification(
+                        GetIndexStatusTool.toolSpec(),
+                        (exchange, req) -> indexStatus.handle(req.arguments())),
                 new McpServerFeatures.SyncToolSpecification(
                         GetHotspotsTool.toolSpec(),
                         (exchange, req) -> hotspots.handle(req.arguments())),

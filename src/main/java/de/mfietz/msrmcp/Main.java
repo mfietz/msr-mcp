@@ -1,6 +1,7 @@
 package de.mfietz.msrmcp;
 
 import de.mfietz.msrmcp.db.*;
+import de.mfietz.msrmcp.index.IndexTracker;
 import de.mfietz.msrmcp.index.Indexer;
 import de.mfietz.msrmcp.model.IndexResult;
 import de.mfietz.msrmcp.tool.ToolRegistry;
@@ -48,19 +49,33 @@ public final class Main {
         FileMetricsDao fileMetricsDao = db.attach(FileMetricsDao.class);
         FileCouplingDao fileCouplingDao = db.attach(FileCouplingDao.class);
 
-        // ── [3] Incremental index on every startup ────────────────────────
+        // ── [3] Incremental index in background ───────────────────────────
         // runIncremental() delegates to runFull() when the DB is empty.
-        System.err.println("MSR: checking for new commits...");
-        IndexResult r = Indexer.runIncremental(repoDir, db);
-        if ("error".equals(r.status())) {
-            System.err.println("MSR: indexing failed: " + r.errorMessage());
-        } else if (r.commitsProcessed() > 0) {
-            System.err.printf(
-                    "MSR: indexed %d commits, %d files in %d ms%n",
-                    r.commitsProcessed(), r.filesIndexed(), r.durationMs());
-        } else {
-            System.err.println("MSR: index is up to date.");
-        }
+        // The MCP server starts immediately; tools guard against incomplete data via IndexTracker.
+        IndexTracker tracker = new IndexTracker();
+        tracker.markIndexing();
+        Thread indexThread =
+                new Thread(
+                        () -> {
+                            System.err.println("MSR: checking for new commits...");
+                            IndexResult r = Indexer.runIncremental(repoDir, db);
+                            if ("error".equals(r.status())) {
+                                tracker.markError(r.errorMessage());
+                                System.err.println("MSR: indexing failed: " + r.errorMessage());
+                            } else {
+                                tracker.markReady(r.durationMs());
+                                if (r.commitsProcessed() > 0) {
+                                    System.err.printf(
+                                            "MSR: indexed %d commits, %d files in %d ms%n",
+                                            r.commitsProcessed(), r.filesIndexed(), r.durationMs());
+                                } else {
+                                    System.err.println("MSR: index is up to date.");
+                                }
+                            }
+                        },
+                        "msr-indexer");
+        indexThread.setDaemon(true);
+        indexThread.start();
 
         // ── [4] Build MCP server ──────────────────────────────────────────
         var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
@@ -91,7 +106,8 @@ public final class Main {
                                         fileMetricsDao,
                                         fileCouplingDao,
                                         repoDir,
-                                        db))
+                                        db,
+                                        tracker))
                         .build();
 
         // ── [5] Serve until client disconnects ───────────────────────────

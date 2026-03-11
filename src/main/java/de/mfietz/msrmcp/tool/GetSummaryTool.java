@@ -4,6 +4,7 @@ import de.mfietz.msrmcp.db.CommitDao;
 import de.mfietz.msrmcp.db.FileChangeDao;
 import de.mfietz.msrmcp.db.FileDao;
 import de.mfietz.msrmcp.db.FileMetricsDao;
+import de.mfietz.msrmcp.index.IndexTracker;
 import de.mfietz.msrmcp.model.SummaryResult;
 import de.mfietz.msrmcp.model.SummaryResult.AuthorSummary;
 import de.mfietz.msrmcp.model.SummaryResult.LangCount;
@@ -32,19 +33,28 @@ public final class GetSummaryTool {
     private final FileChangeDao fileChangeDao;
     private final FileMetricsDao fileMetricsDao;
     private final FileDao fileDao;
+    private final IndexTracker tracker;
 
     public GetSummaryTool(
             CommitDao commitDao,
             FileChangeDao fileChangeDao,
             FileMetricsDao fileMetricsDao,
-            FileDao fileDao) {
+            FileDao fileDao,
+            IndexTracker tracker) {
         this.commitDao = commitDao;
         this.fileChangeDao = fileChangeDao;
         this.fileMetricsDao = fileMetricsDao;
         this.fileDao = fileDao;
+        this.tracker = tracker;
     }
 
     public CallToolResult handle(Map<String, Object> args) {
+        if (!tracker.isReady()) {
+            return GetHotspotsTool.error(
+                    "Index not ready (status: "
+                            + tracker.state().name().toLowerCase()
+                            + "). Call get_index_status to check progress.");
+        }
         try {
             int totalCommits = commitDao.count();
             int uniqueAuthors = commitDao.countDistinctAuthors();
