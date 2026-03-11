@@ -72,6 +72,10 @@ mvn test
 # full fat JAR
 mvn package -DskipTests
 
+# check for outdated dependencies / plugins
+mvn versions:display-dependency-updates
+mvn versions:display-plugin-updates
+
 # run against a local repo
 cd /some/git/repo
 java -jar /path/to/msr-mcp-server.jar
@@ -204,7 +208,7 @@ Conventions observed in this codebase:
 - Heuristic detection: per-commit DELETE+ADD pairs sharing the same basename (unambiguous 1:1 only)
 - When detected: `files.path` is updated in-place via `FileDao.updatePath` — old `file_id` is preserved
 - `changeBatch` entries are rewritten in `flush()` so `resolvePaths` never re-inserts the old path
-- In-memory maps (`totalChanges`, `coChanges`) are rekeyed before the batch is flushed
+- In-memory maps (`totalChanges`, `coChanges`) are rekeyed before the batch is flushed in a single O(n) pass
 - Multi-commit chains (A→B→C) and ambiguous basenames (two files same name) are NOT detected
 - Does NOT use JGit `setDetectRenames` — our heuristic handles the common case without content loading
 
