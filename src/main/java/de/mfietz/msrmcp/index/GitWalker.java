@@ -228,37 +228,36 @@ final class GitWalker {
             Map<String, String> renames,
             Map<String, int[]> totalChanges,
             Map<String, int[]> coChanges) {
+        // totalChanges: simple key swaps
         for (var rename : renames.entrySet()) {
-            String oldPath = rename.getKey();
-            String newPath = rename.getValue();
-
-            // totalChanges: simple key swap
-            int[] count = totalChanges.remove(oldPath);
-            if (count != null) totalChanges.put(newPath, count);
-
-            // coChanges: scan all keys, replace oldPath with newPath, merge on collision
-            Map<String, int[]> updated = new HashMap<>();
-            for (var e : coChanges.entrySet()) {
-                String key = e.getKey();
-                String[] parts = key.split("\0", 2);
-                String a = parts[0].equals(oldPath) ? newPath : parts[0];
-                String b = parts[1].equals(oldPath) ? newPath : parts[1];
-                if (a.compareTo(b) > 0) {
-                    String tmp = a;
-                    a = b;
-                    b = tmp;
-                }
-                updated.merge(
-                        a + "\0" + b,
-                        e.getValue(),
-                        (v1, v2) -> {
-                            v1[0] += v2[0];
-                            return v1;
-                        });
-            }
-            coChanges.clear();
-            coChanges.putAll(updated);
+            int[] count = totalChanges.remove(rename.getKey());
+            if (count != null) totalChanges.put(rename.getValue(), count);
         }
+
+        // coChanges: single pass — apply all renames at once, merge on collision
+        Map<String, int[]> updated = new HashMap<>(coChanges.size());
+        for (var e : coChanges.entrySet()) {
+            String key = e.getKey();
+            int sep = key.indexOf('\0');
+            String rawA = key.substring(0, sep);
+            String rawB = key.substring(sep + 1);
+            String a = renames.getOrDefault(rawA, rawA);
+            String b = renames.getOrDefault(rawB, rawB);
+            if (a.compareTo(b) > 0) {
+                String tmp = a;
+                a = b;
+                b = tmp;
+            }
+            updated.merge(
+                    a + "\0" + b,
+                    e.getValue(),
+                    (v1, v2) -> {
+                        v1[0] += v2[0];
+                        return v1;
+                    });
+        }
+        coChanges.clear();
+        coChanges.putAll(updated);
     }
 
     private static void accumulateCoChanges(List<String> paths, Map<String, int[]> coChanges) {
