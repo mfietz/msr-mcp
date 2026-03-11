@@ -147,7 +147,7 @@ final class GitWalker {
             // totalChanges: one entry per unique file path — use file count directly
             // coChanges: file pairs — heuristically ~10x file count (sparse in practice)
             int fileCount = hint.fileCount();
-            Map<String, int[]> coChanges = new HashMap<>(Math.max(16, fileCount * 10));
+            Map<String, int[]> coChanges = new HashMap<>(Math.max(16, fileCount * 20));
             Map<String, int[]> totalChanges = new HashMap<>(Math.max(16, fileCount * 2));
             Set<String> allChangedPaths = new HashSet<>(Math.max(16, fileCount * 2));
 
@@ -297,28 +297,43 @@ final class GitWalker {
     }
 
     /**
-     * Renames all keys referencing {@code oldPath} to {@code newPath} in the in-memory accumulation
-     * maps. Prevents ghost file_id creation at coupling flush.
+     * Follows a rename chain to its final canonical path. Handles multi-hop renames within the
+     * same window (A→B in commit 100, B→C in commit 200 → resolves A to C).
+     */
+    private static String resolveRename(Map<String, String> renames, String path) {
+        String next;
+        int hops = 0;
+        while ((next = renames.get(path)) != null && hops++ < 20) path = next;
+        return path;
+    }
+
+    /**
+     * Applies accumulated renames to the in-memory maps. Called once per window (not per commit)
+     * to amortise the O(coChanges) scan across all renames in the batch.
      */
     private static void applyRenamesInMemory(
             Map<String, String> renames,
             Map<String, int[]> totalChanges,
             Map<String, int[]> coChanges) {
-        // totalChanges: simple key swaps
+        // totalChanges: swap each old key to its canonical path, merge on collision
         for (var rename : renames.entrySet()) {
+            String canonical = resolveRename(renames, rename.getKey());
             int[] count = totalChanges.remove(rename.getKey());
-            if (count != null) totalChanges.put(rename.getValue(), count);
+            if (count != null) {
+                totalChanges.merge(canonical, count, (v1, v2) -> {
+                    v1[0] += v2[0];
+                    return v1;
+                });
+            }
         }
 
-        // coChanges: single pass — apply all renames at once, merge on collision
+        // coChanges: single pass — resolve all paths to canonical, merge on collision
         Map<String, int[]> updated = new HashMap<>(coChanges.size());
         for (var e : coChanges.entrySet()) {
             String key = e.getKey();
             int sep = key.indexOf('\0');
-            String rawA = key.substring(0, sep);
-            String rawB = key.substring(sep + 1);
-            String a = renames.getOrDefault(rawA, rawA);
-            String b = renames.getOrDefault(rawB, rawB);
+            String a = resolveRename(renames, key.substring(0, sep));
+            String b = resolveRename(renames, key.substring(sep + 1));
             if (a.compareTo(b) > 0) {
                 String tmp = a;
                 a = b;
@@ -499,6 +514,9 @@ final class GitWalker {
         }
 
         // Phase 2 — sequential map update in chronological order
+        // Renames are accumulated across the whole window and applied once at the end,
+        // reducing the O(coChanges) scan from once-per-rename to once-per-window.
+        Map<String, String> windowRenames = new HashMap<>();
         for (Future<CommitDiff> future : futures) {
             CommitDiff cd;
             try {
@@ -537,7 +555,7 @@ final class GitWalker {
                 commitRenames.entrySet().removeIf(e -> existingPaths.contains(e.getValue()));
             }
             if (!commitRenames.isEmpty()) {
-                applyRenamesInMemory(commitRenames, totalChanges, coChanges);
+                windowRenames.putAll(commitRenames);
                 pendingRenames.putAll(commitRenames);
             }
 
@@ -557,6 +575,9 @@ final class GitWalker {
             }
         }
 
+        if (!windowRenames.isEmpty()) {
+            applyRenamesInMemory(windowRenames, totalChanges, coChanges);
+        }
         flush(commitBatch, changeBatch, pendingRenames);
     }
 
