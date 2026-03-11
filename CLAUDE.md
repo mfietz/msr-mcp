@@ -20,6 +20,9 @@ de.mfietz.msrmcp
 │   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd + gone-path cleanup
 │   ├── IndexTracker.java        # Thread-safe state machine: NOT_STARTED→INDEXING→READY|ERROR
 │   │                            # markIndexing/markReady(elapsedMs)/markError(msg); isReady() guards tools
+│   ├── MailMap.java             # Parses .mailmap from repo root; resolve(name,email)→canonical Identity
+│   │                            # Supports all 4 git formats; case-insensitive email match; first match wins
+│   │                            # Missing file → no-op (returns input unchanged)
 │   ├── GitWalker.java           # RevWalk on main/master/HEAD; WalkResult(commitsProcessed,changedPaths)
 │   │                            # RevSort.REVERSE → oldest-first walk (chronological order for co-change semantics)
 │   │                            # walk(stopAtHash) uses markUninteresting for incremental boundary
@@ -200,6 +203,18 @@ Conventions observed in this codebase:
 - `FileChangeIdRecord(long commitId, long fileId)` — both FKs are integers
 - Coupling `file_a_id < file_b_id` enforced at flush time (may differ from lexicographic path order)
 - `@BindList` chunked to 999 per call (SQLite variable limit)
+
+### .mailmap author deduplication
+- `MailMap.load(repoDir)` is called once at the start of each `walk()` — loaded before the RevWalk opens
+- If `.mailmap` does not exist the result is an empty `MailMap`; `resolve()` returns input unchanged
+- Applied in `processWindow()` before building `CommitRecord`: raw `PersonIdent` → `MailMap.resolve()` → canonical name/email
+- Four supported formats (per git-check-mailmap(1)):
+  - `Proper Name <commit@email>` — override name when email matches
+  - `<proper@email> <commit@email>` — override email when email matches
+  - `Proper Name <proper@email> <commit@email>` — override both when email matches
+  - `Proper Name <proper@email> Commit Name <commit@email>` — override both when name AND email match
+- Email matching is case-insensitive; first matching entry wins
+- Result: all analytics tools (`get_file_authors`, `get_summary`, `get_ownership`, etc.) see canonical identities
 
 ### Git indexing
 - Default branch: `refs/heads/main` → `refs/heads/master` → `HEAD`
