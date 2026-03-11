@@ -208,8 +208,14 @@ Conventions observed in this codebase:
 - Heuristic detection: per-commit DELETE+ADD pairs sharing the same basename (unambiguous 1:1 only)
 - When detected: `files.path` is updated in-place via `FileDao.updatePath` — old `file_id` is preserved
 - `changeBatch` entries are rewritten in `flush()` so `resolvePaths` never re-inserts the old path
-- In-memory maps (`totalChanges`, `coChanges`) are rekeyed before the batch is flushed in a single O(n) pass
-- Multi-commit chains (A→B→C) and ambiguous basenames (two files same name) are NOT detected
+- Renames are accumulated into `windowRenames` across the whole 500-commit window and applied once via
+  `applyRenamesInMemory()` — O(coChanges) per window instead of per-commit
+- `resolveRename()` follows multi-hop chains within the same window (A→B in commit 100, B→C in commit 200
+  within same window) using a simple loop with a depth cap
+- `totalChanges` key swap uses `merge()` to handle collisions when the canonical path already has an entry
+  from commits after the rename
+- Multi-window chains (rename spans two 500-commit windows) and ambiguous basenames (two files same name)
+  are NOT detected
 - Does NOT use JGit `setDetectRenames` — our heuristic handles the common case without content loading
 
 ### Deleted file cleanup
@@ -227,12 +233,23 @@ Conventions observed in this codebase:
 ### Parallel diff computation (GitWalker)
 - Fixed thread pool: `Runtime.getRuntime().availableProcessors()` threads
 - `ThreadLocal<DiffFormatter>` — one JGit formatter per pool thread (JGit not thread-safe)
+- DiffFormatter configured with `RawTextComparator.WS_IGNORE_ALL` (whitespace runs as single tokens —
+  faster diff on indented code; whitespace-only edits count as 0 lines changed) and `setContext(0)`
+  (no context lines needed for line-count aggregation — smaller edit lists, less memory)
+- Binary file extension check before `toEditList()` — images, fonts, archives, compiled files, media,
+  documents are skipped without loading blob content or running Myers diff
+- Merge commits (`parentCount > 1`): `toEditList()` skipped entirely (line counts stay 0) and excluded
+  from co-change accumulation — merges are integration events, not real work
 - Two-phase window processing per 500-commit batch:
   - Phase 1: submit `computeCommitDiff` tasks in parallel
   - Phase 2: retrieve futures in chronological order, update maps sequentially
 - `CommitDiff` / `EntryData` private records carry only plain Java data across threads
 - Pool + formatters wrapped in `try/finally` for cleanup on exception path
 - Co-change map updates are sequential (Phase 2) to preserve chronological order
+- `probeRepoSize()`: counts HEAD tree files (pure in-memory TreeWalk, no blob loading) and sums pack
+  file sizes — used to pre-size `coChanges`/`totalChanges`/`allChangedPaths` maps and tune cache
+- `applyWindowCache()`: sizes JGit's pack-file window cache between 128 MB (small repos) and 512 MB
+  based on actual pack size — called once before the walk
 
 ### Temporal coupling `since` routing
 - No `sinceEpochMs`: fast path via pre-aggregated `file_coupling` table
@@ -277,7 +294,7 @@ c=Counter(frames)
 
 DB state mid-run: `sqlite3 /path/to/.msr/msr.db "SELECT COUNT(*) FROM commits; SELECT COUNT(*) FROM file_changes;"`
 
-**Remaining hotspot (2026-03):** JGit diff computation (`RawText.isBinary`, `MyersDiff`) — inherent cost of line-level diffing. Top-frame CPU after rename tracking removal.
+**Remaining hotspot (2026-03):** JGit diff computation (`MyersDiff`) on large text files — inherent cost of line-level diffing. Binary extension skip, `WS_IGNORE_ALL`, `setContext(0)`, and merge-commit exclusion reduce the scope significantly, but Myers diff on large Java files remains the dominant CPU consumer.
 
 ## Known risks / fixed bugs
 
