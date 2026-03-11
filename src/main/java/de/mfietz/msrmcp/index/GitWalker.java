@@ -27,7 +27,6 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.WindowCacheConfig;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
-import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
 
 /**
@@ -114,7 +113,7 @@ final class GitWalker {
             if (headId == null) return new WalkResult(0, Set.of());
 
             // Probe repo size to right-size caches and maps
-            RepoSizeHint hint = probeRepoSize(repo, headId);
+            RepoSizeHint hint = probeRepoSize(repo);
             applyWindowCache(hint.packBytes());
 
             revWalk.markStart(revWalk.parseCommit(headId));
@@ -209,20 +208,12 @@ final class GitWalker {
     }
 
     /**
-     * Counts the number of files in the HEAD tree (pure in-memory tree traversal, no blob loading)
-     * and sums the sizes of all pack files. Used to right-size caches and maps before the walk.
+     * Sums the sizes of all pack files (File.length() only — no I/O into pack content).
+     * Used to right-size the JGit window cache before the walk.
      */
     private record RepoSizeHint(int fileCount, long packBytes) {}
 
-    private static RepoSizeHint probeRepoSize(Repository repo, ObjectId headId) throws IOException {
-        int fileCount = 0;
-        try (TreeWalk tw = new TreeWalk(repo)) {
-            RevCommit head = repo.parseCommit(headId);
-            tw.addTree(head.getTree());
-            tw.setRecursive(true);
-            while (tw.next()) fileCount++;
-        }
-
+    private static RepoSizeHint probeRepoSize(Repository repo) {
         long packBytes = 0;
         java.io.File packDir =
                 new java.io.File(repo.getDirectory(), "objects/pack");
@@ -232,7 +223,11 @@ final class GitWalker {
             for (java.io.File p : packs) packBytes += p.length();
         }
 
-        return new RepoSizeHint(fileCount, packBytes);
+        // Rough heuristic: average ~500 bytes per stored object in pack.
+        // Over-estimates file count but avoids expensive TreeWalk.
+        int estimatedFiles = (int) Math.min(packBytes / 500, Integer.MAX_VALUE);
+
+        return new RepoSizeHint(estimatedFiles, packBytes);
     }
 
     /**

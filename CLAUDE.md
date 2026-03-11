@@ -246,8 +246,8 @@ Conventions observed in this codebase:
 - `CommitDiff` / `EntryData` private records carry only plain Java data across threads
 - Pool + formatters wrapped in `try/finally` for cleanup on exception path
 - Co-change map updates are sequential (Phase 2) to preserve chronological order
-- `probeRepoSize()`: counts HEAD tree files (pure in-memory TreeWalk, no blob loading) and sums pack
-  file sizes — used to pre-size `coChanges`/`totalChanges`/`allChangedPaths` maps and tune cache
+- `probeRepoSize()`: sums pack file sizes via `File.length()` only (no I/O into pack content); estimates
+  file count via `packBytes / 500` heuristic — used to pre-size `coChanges`/`totalChanges`/`allChangedPaths` maps and tune cache
 - `applyWindowCache()`: sizes JGit's pack-file window cache between 128 MB (small repos) and 512 MB
   based on actual pack size — called once before the walk
 
