@@ -4,7 +4,7 @@
 
 ```
 de.mfietz.msrmcp
-├── Main.java                    # Entrypoint: git check → DB → runIncremental → STDIO loop
+├── Main.java                    # Entrypoint: git check → DB → background runIncremental → STDIO loop
 ├── db/
 │   ├── Database.java            # Jdbi setup, WAL pragma, DDL, ConstructorMapper registration
 │   ├── CommitDao.java           # commits lookup table: insertBatch + findByHashes → CommitIdRecord(commitId, hash)
@@ -18,6 +18,8 @@ de.mfietz.msrmcp
 ├── index/
 │   ├── Indexer.java             # runFull(): clear coupling → GitWalker → LocCounter → PmdRunner → deleteStaleMetrics
 │   │                            # runIncremental(): walk(latestHash) → targeted Loc+Pmd + gone-path cleanup
+│   ├── IndexTracker.java        # Thread-safe state machine: NOT_STARTED→INDEXING→READY|ERROR
+│   │                            # markIndexing/markReady(elapsedMs)/markError(msg); isReady() guards tools
 │   ├── GitWalker.java           # RevWalk on main/master/HEAD; WalkResult(commitsProcessed,changedPaths)
 │   │                            # RevSort.REVERSE → oldest-first walk (chronological order for co-change semantics)
 │   │                            # walk(stopAtHash) uses markUninteresting for incremental boundary
@@ -34,9 +36,11 @@ de.mfietz.msrmcp
 │                                # (PMD clones rule instances — instance maps are empty on clones)
 │                                # reset() must be called before each PmdAnalysis run
 ├── tool/
-│   ├── ToolRegistry.java        # buildSpecs() → List<SyncToolSpecification>
+│   ├── ToolRegistry.java        # buildSpecs(…, IndexTracker) → List<SyncToolSpecification>
 │   ├── ToolSchemas.java         # McpSchema.JsonSchema definitions
 │   ├── GetHotspotsTool.java     # Also holds shared helpers: ok(), error(), intArg(), longArg(), …
+│   ├── GetIndexStatusTool.java  # returns IndexTracker state as JSON; never returns isError
+│   │                            # { status, startedAtMs, elapsedMs?, errorMessage? }
 │   ├── GetTemporalCouplingTool.java
 │   ├── GetFileCommitHistoryTool.java  # jiraSlug filter via LIKE on commits.jira_slug
 │   ├── GetFileAuthorsTool.java        # authors ranked by commit count; uses CommitDao.findAuthorsForFile
@@ -44,6 +48,7 @@ de.mfietz.msrmcp
 │   ├── GetOwnershipTool.java          # dominant author per file; ownershipBy=commits|lines; CommitDao.findOwnershipByCommits/Lines
 │   ├── GetChurnTool.java              # top files by lines added+deleted; FileChangeDao.findTopChurn
 │   ├── GetSummaryTool.java            # returns uniqueAuthors, topAuthors, languageDistribution
+│   │                                  # guards: returns isError if IndexTracker is not READY
 │   ├── GetStaleFilesTool.java         # files not changed in N days × complexity score; FileChangeDao.findStaleFiles
 │   └── RefreshIndexTool.java
 ├── model/                       # Java records: CommitRecord(+authorEmail,authorName), FileChangeRecord,
@@ -250,6 +255,20 @@ Conventions observed in this codebase:
   file count via `packBytes / 500` heuristic — used to pre-size `coChanges`/`totalChanges`/`allChangedPaths` maps and tune cache
 - `applyWindowCache()`: sizes JGit's pack-file window cache between 128 MB (small repos) and 512 MB
   based on actual pack size — called once before the walk
+
+### Background indexing and IndexTracker
+- `Main` starts indexing in a daemon thread (`msr-indexer`) immediately after DB open
+- MCP server starts without waiting for indexing to complete
+- `IndexTracker` is passed to `ToolRegistry.buildSpecs()` and forwarded to tools that guard against
+  incomplete data (currently `GetSummaryTool`; extend to other tools as needed)
+- State transitions: `NOT_STARTED → INDEXING → READY | ERROR`
+- `markIndexing()` records `startedAtMs`; `markReady(elapsedMs)` / `markError(msg)` called from the
+  indexer thread once `runIncremental()` returns
+- `get_index_status` tool exposes the tracker state as JSON — callers should poll this before
+  relying on analytics results:
+  `{ "status": "ready", "startedAtMs": 1741723200000, "elapsedMs": 4231 }`
+- Tools that guard: check `tracker.isReady()` at the top of `handle()`; return
+  `GetHotspotsTool.error("Index not ready (status: indexing). Call get_index_status …")` when false
 
 ### Temporal coupling `since` routing
 - No `sinceEpochMs`: fast path via pre-aggregated `file_coupling` table
