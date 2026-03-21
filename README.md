@@ -1,6 +1,6 @@
 # msr-mcp — Mining Software Repository MCP Server
 
-Analyses your git history and exposes four MCP tools that any MCP-compatible AI client
+Analyses your git history and exposes MCP tools that any MCP-compatible AI client
 (Claude Desktop, Cursor, …) can call directly inside the repository.
 
 [![CI](https://github.com/mfietz/msr-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/mfietz/msr-mcp/actions/workflows/ci.yml)
@@ -15,10 +15,14 @@ Analyses your git history and exposes four MCP tools that any MCP-compatible AI 
 | `get_hotspots` | Top files ranked by change frequency × complexity (supports path/extension filter) |
 | `get_temporal_coupling` | File pairs most often changed together |
 | `get_file_coupling` | Coupling partners for a specific file |
+| `get_coupling_clusters` | Groups of files that frequently change together (co-change clusters) |
 | `get_file_commit_history` | Commit history for one file with JIRA slug extraction and filter |
 | `get_file_authors` | Authors ranked by commit count for a specific file (knowledge owners) |
 | `get_bus_factor` | Files where one author dominates commits (knowledge silos) |
+| `get_ownership` | Dominant author per file by commit count or lines |
 | `get_churn` | Top files ranked by total lines added + deleted |
+| `get_stale_files` | Files not changed for N days, weighted by complexity |
+| `get_index_status` | Current indexing state (useful when index is still being built) |
 | `refresh_index` | Rebuild the full `.msr/` index from scratch |
 
 Only the **default branch** (`main` → `master` → `HEAD`) is indexed.
@@ -204,6 +208,39 @@ Returns the files most frequently changed together with the given file:
 ]
 ```
 
+### `get_coupling_clusters`
+
+Identifies groups of files that frequently change together, using bidirectional coupling
+(`co_changes / MAX(total_a, total_b)`) to exclude hub files that co-change with everything.
+
+Two modes:
+- **Global scan** (no `filePath`): Union-Find over all edges ≥ `minCoupling`, returns all clusters sorted by average coupling.
+- **Single-file lookup** (`filePath` set): recursive graph traversal returns only the cluster containing that file — much faster for targeted queries.
+
+```
+filePath        string  If set: return the cluster for this file. If absent: return all clusters.
+minCoupling     double  Min bidirectional coupling ratio 0–1 (default 0.3)
+minClusterSize  int     Min files per cluster (default 3, global mode only)
+maxClusterSize  int     Max files per cluster; excludes god-clusters (no default)
+pathFilter      string  SQL LIKE pattern; keeps clusters where ≥1 file matches, e.g. "src/auth/%"
+topN            int     Max clusters to return (default 20, global mode only)
+sinceEpochMs    long    Time window; triggers dynamic query when set
+```
+
+```json
+[
+  {
+    "clusterIndex": 1,
+    "files": ["src/auth/AuthFilter.java", "src/auth/LoginService.java", "src/auth/TokenStore.java"],
+    "edges": [
+      { "fileA": "src/auth/AuthFilter.java", "fileB": "src/auth/LoginService.java",
+        "coChanges": 18, "couplingRatio": 0.82 }
+    ],
+    "avgCoupling": 0.76
+  }
+]
+```
+
 ### `get_file_authors`
 
 ```
@@ -267,6 +304,68 @@ Returns files sorted by total churn (lines added + lines deleted) descending:
   }
 ]
 ```
+
+### `get_ownership`
+
+```
+topN          int     Max results (default 20)
+ownershipBy   string  Measure by "commits" (default) or "lines"
+minOwnership  double  Min ownership ratio 0–1 (default 0.0)
+extension     string  File extension filter, e.g. ".java". Default: all files
+pathFilter    string  SQL LIKE path pattern, e.g. "src/service/%". Default: all paths
+sinceEpochMs  long    Only include commits after this timestamp (ms)
+```
+
+Returns the dominant author per file, sorted by ownership ratio descending:
+
+```json
+[
+  {
+    "filePath": "src/core/Engine.java",
+    "ownerEmail": "alice@example.com",
+    "ownerName": "Alice",
+    "ownerCount": 38,
+    "totalCount": 41,
+    "ownershipRatio": 0.93
+  }
+]
+```
+
+### `get_stale_files`
+
+Files that have not been changed for a long time, weighted by complexity — useful for finding neglected code that may have rotted.
+
+```
+topN          int     Max results (default 20)
+minDaysStale  int     Only include files not changed for at least N days (default 180)
+extension     string  File extension filter, e.g. ".java". Default: all files
+pathFilter    string  SQL LIKE path pattern, e.g. "src/service/%". Default: all paths
+```
+
+Returns files sorted by staleness score (`daysSinceLastChange × complexity`) descending:
+
+```json
+[
+  {
+    "filePath": "src/legacy/OldParser.java",
+    "daysSinceLastChange": 540,
+    "ageInDays": 1200,
+    "linesOfCode": 420,
+    "cyclomaticComplexity": 31,
+    "stalenessScore": 0.95
+  }
+]
+```
+
+### `get_index_status`
+
+No arguments. Returns the current state of the background index:
+
+```json
+{ "status": "READY", "startedAtMs": 1741046400000, "elapsedMs": 4200, "errorMessage": null }
+```
+
+`status` is one of `NOT_STARTED`, `INDEXING`, `READY`, or `ERROR`. Tools return an error response while status is not `READY`.
 
 ### `get_file_commit_history`
 
