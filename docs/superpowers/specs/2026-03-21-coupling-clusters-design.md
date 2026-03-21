@@ -31,7 +31,8 @@ Cluster-specific ratio: `co_changes / MAX(total_a, total_b)` — requires **both
 |---|---|---|---|
 | `minCoupling` | double | 0.3 | Min threshold for `co_changes / MAX(total_a, total_b)` |
 | `minClusterSize` | int | 2 | Filter out clusters smaller than this |
-| `topN` | int | 20 | Max clusters returned, sorted by avg coupling desc |
+| `topN` | int | 20 | Max clusters returned, sorted by avg coupling desc; schema minimum: 1 |
+| `minClusterSize` schema note | — | — | JSON schema type `integer`, minimum `2` |
 | `sinceEpochMs` | long | — | Optional time window (consistent with other coupling tools) |
 
 ## Output Format
@@ -63,14 +64,17 @@ Each cluster includes:
 ```
 sinceEpochMs == null:
   FileCouplingDao.findEdgesForClustering(minCoupling)
-    → SELECT from file_coupling using MAX normalization, no LIMIT (internal cap: 10 000 edges)
+    → SELECT from file_coupling, MAX normalization, ORDER BY coupling_ratio DESC LIMIT 10000
 
 sinceEpochMs != null:
   FileCouplingDao.findEdgesForClusteringSince(sinceEpochMs, minCoupling)
-    → CTE on file_changes (same pattern as findTopCoupledSince), MAX normalization
+    → CTE on file_changes (same pattern as findTopCoupledSince), MAX normalization,
+      ORDER BY coupling_ratio DESC LIMIT 10000
+      Note: MAX replaces MIN in BOTH the SELECT expression and the HAVING clause
 
 Both paths feed into:
   GetCouplingClustersTool.handle()
+    → if rows.size() == 10_000: return isError("Edge cap reached …")
     → Union-Find clustering → filter → sort → serialize
 ```
 
@@ -79,16 +83,18 @@ Both paths feed into:
 | File | Change |
 |---|---|
 | `db/FileCouplingDao.java` | Add `findEdgesForClustering(minCoupling)` and `findEdgesForClusteringSince(sinceEpochMs, minCoupling)` — both return `List<CouplingRow>`, using MAX normalization |
-| `tool/GetCouplingClustersTool.java` | New tool class with Union-Find as private static inner class |
-| `model/CouplingClusterResult.java` | New file — records `CouplingClusterResult(int clusterIndex, List<String> files, List<ClusterEdge> edges, double avgCoupling)` and `ClusterEdge(String fileA, String fileB, int coChanges, double couplingRatio)` |
+| `tool/GetCouplingClustersTool.java` | New tool class: `GetCouplingClustersTool(FileCouplingDao fileCouplingDao, IndexTracker tracker)` — wired in `ToolRegistry.buildSpecs` the same way as `GetSummaryTool`; Union-Find as private static inner class |
+| `model/CouplingClusterResult.java` | New file — record `CouplingClusterResult(int clusterIndex, List<String> files, List<ClusterEdge> edges, double avgCoupling)` |
+| `model/ClusterEdge.java` | New file — record `ClusterEdge(String fileA, String fileB, int coChanges, double couplingRatio)` |
 | `tool/ToolRegistry.java` | Register new tool |
 | `tool/ToolSchemas.java` | Add `couplingClusters()` schema |
 
 ## Key Implementation Notes
 
-- **IndexTracker guard:** Return `error("Index not ready")` when `!tracker.isReady()`, consistent with other tools.
+- **IndexTracker guard:** Return `error("Index not ready … Call get_index_status")` when `!tracker.isReady()`, matching the exact message used by all other tools.
 - **Empty graph guard:** Return empty array `[]` (not error) when no edges meet the threshold.
 - **Union-Find:** Standard path-compressed implementation as private static class inside `GetCouplingClustersTool`. No external library.
-- **CouplingRow reuse:** Both new DAO queries return the existing `FileCouplingDao.CouplingRow` — `couplingRatio` field will carry the MAX-normalized value.
-- **Edge cap:** Fetch at most 10 000 edges from DB (via SQL `LIMIT 10000`) to prevent memory pressure on large repos. Log a warning if the cap is hit.
+- **Helper reuse:** Use `import static de.mfietz.msrmcp.tool.GetHotspotsTool.*` — this covers `ok()`, `error()`, `intArg()`, `longArg()`, `doubleArg()`. Do not define local copies.
+- **CouplingRow reuse:** Both new DAO queries return the existing `FileCouplingDao.CouplingRow`. SQL must alias the MAX-normalized expression as `coupling_ratio` to satisfy JDBI's `ConstructorMapper` (which matches column names to constructor parameter names). `totalChangesA` and `totalChangesB` are included for ConstructorMapper compatibility but unused by the Union-Find algorithm.
+- **Edge cap:** Fetch at most 10 000 edges from DB (`ORDER BY coupling_ratio DESC LIMIT 10000`). Sorting by ratio desc ensures the strongest edges are always included. If the cap is hit, return `isError: true` with message `"Edge cap reached (10 000 edges). Increase minCoupling to reduce graph size."` — silently returning partial clusters would produce incorrect results.
 - **Spotless:** Run `mvn spotless:apply` before committing (AOSP 4-space indent).
