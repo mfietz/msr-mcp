@@ -385,6 +385,64 @@ final class ToolSchemas {
                 null);
     }
 
+    static JsonSchema couplingClusters() {
+        return new JsonSchema(
+                "object",
+                Map.of(
+                        "filePath",
+                                Map.of(
+                                        "type",
+                                        "string",
+                                        "description",
+                                        "Repo-relative path, e.g. \"src/Main.java\". If set, returns only"
+                                                + " the cluster containing this file (fast recursive"
+                                                + " lookup). If absent, returns all clusters (global scan)."),
+                        "minCoupling",
+                                Map.of(
+                                        "type",
+                                        "number",
+                                        "description",
+                                        "Minimum bidirectional coupling ratio 0–1 (default 0.3)."
+                                                + " Uses co_changes / MAX(total_a, total_b) —"
+                                                + " higher values yield tighter, smaller clusters.",
+                                        "minimum",
+                                        0.0,
+                                        "maximum",
+                                        1.0,
+                                        "default",
+                                        0.3),
+                        "minClusterSize",
+                                Map.of(
+                                        "type",
+                                        "integer",
+                                        "description",
+                                        "Minimum files per cluster (default 2, global mode only)",
+                                        "minimum",
+                                        2,
+                                        "default",
+                                        2),
+                        "topN",
+                                Map.of(
+                                        "type",
+                                        "integer",
+                                        "description",
+                                        "Max clusters to return (default 20, global mode only)",
+                                        "minimum",
+                                        1,
+                                        "default",
+                                        20),
+                        "sinceEpochMs",
+                                Map.of(
+                                        "type",
+                                        "integer",
+                                        "description",
+                                        "Time window start (ms); triggers dynamic query when set")),
+                List.of(),
+                null,
+                null,
+                null);
+    }
+
     static JsonSchema empty() {
         return new JsonSchema("object", Map.of(), List.of(), null, null, null);
     }

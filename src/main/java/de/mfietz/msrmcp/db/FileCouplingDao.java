@@ -143,6 +143,81 @@ public interface FileCouplingDao {
             @Bind("minCoupling") double minCoupling,
             @Bind("topN") int topN);
 
+    @SqlQuery(
+            """
+            SELECT
+              fa.path AS file_a, fb.path AS file_b,
+              fc.co_changes, fc.total_changes_a, fc.total_changes_b,
+              CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b)
+                AS coupling_ratio
+            FROM file_coupling fc
+            JOIN files fa ON fa.file_id = fc.file_a_id
+            JOIN files fb ON fb.file_id = fc.file_b_id
+            WHERE fc.total_changes_a > 0 AND fc.total_changes_b > 0
+              AND CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b)
+                >= :minCoupling
+            ORDER BY coupling_ratio DESC
+            LIMIT 10000
+            """)
+    List<CouplingRow> findEdgesForClustering(@Bind("minCoupling") double minCoupling);
+
+    @SqlQuery(
+            """
+            WITH RECURSIVE component(file_id) AS (
+              SELECT f.file_id FROM files f WHERE f.path = :filePath
+              UNION
+              SELECT CASE WHEN fc.file_a_id = c.file_id
+                         THEN fc.file_b_id ELSE fc.file_a_id END
+              FROM file_coupling fc
+              JOIN component c ON fc.file_a_id = c.file_id OR fc.file_b_id = c.file_id
+              WHERE CAST(fc.co_changes AS REAL)
+                      / MAX(fc.total_changes_a, fc.total_changes_b) >= :minCoupling
+            )
+            SELECT
+              fa.path AS file_a, fb.path AS file_b,
+              fc.co_changes, fc.total_changes_a, fc.total_changes_b,
+              CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b)
+                AS coupling_ratio
+            FROM file_coupling fc
+            JOIN files fa ON fa.file_id = fc.file_a_id
+            JOIN files fb ON fb.file_id = fc.file_b_id
+            WHERE fc.file_a_id IN (SELECT file_id FROM component)
+              AND fc.file_b_id IN (SELECT file_id FROM component)
+            ORDER BY coupling_ratio DESC
+            """)
+    List<CouplingRow> findClusterForFile(
+            @Bind("filePath") String filePath, @Bind("minCoupling") double minCoupling);
+
+    @SqlQuery(
+            """
+            SELECT fa.path AS file_a, fb.path AS file_b,
+              fc.co_changes, fc.total_changes_a, fc.total_changes_b,
+              CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b)
+                AS coupling_ratio
+            FROM file_coupling fc
+            JOIN files fa ON fa.file_id = fc.file_a_id
+            JOIN files fb ON fb.file_id = fc.file_b_id
+            WHERE 1=0
+            """)
+    List<CouplingRow> findEdgesForClusteringSince(
+            @Bind("sinceEpochMs") Long sinceEpochMs, @Bind("minCoupling") double minCoupling);
+
+    @SqlQuery(
+            """
+            SELECT fa.path AS file_a, fb.path AS file_b,
+              fc.co_changes, fc.total_changes_a, fc.total_changes_b,
+              CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b)
+                AS coupling_ratio
+            FROM file_coupling fc
+            JOIN files fa ON fa.file_id = fc.file_a_id
+            JOIN files fb ON fb.file_id = fc.file_b_id
+            WHERE 1=0
+            """)
+    List<CouplingRow> findClusterForFileSince(
+            @Bind("filePath") String filePath,
+            @Bind("sinceEpochMs") Long sinceEpochMs,
+            @Bind("minCoupling") double minCoupling);
+
     @SqlUpdate("DELETE FROM file_coupling")
     void deleteAll();
 
