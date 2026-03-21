@@ -84,7 +84,7 @@ class GetCouplingClustersAcceptanceTest {
 
     @Test
     void globalMode_returnsTwoClusters() {
-        String json = text(tool.handle(Map.of()));
+        String json = text(tool.handle(Map.of("minClusterSize", 2)));
         assertThat(json).contains("\"clusterIndex\":1");
         assertThat(json).contains("\"clusterIndex\":2");
         assertThat(json).contains("auth/Login.java");
@@ -95,7 +95,7 @@ class GetCouplingClustersAcceptanceTest {
 
     @Test
     void globalMode_eachClusterHasEdgesAndFullCoupling() {
-        String json = text(tool.handle(Map.of()));
+        String json = text(tool.handle(Map.of("minClusterSize", 2)));
         // Each pair co-changed in 3 commits with ratio 1.0 (MAX normalization)
         assertThat(json).contains("\"coChanges\":3");
         assertThat(json).contains("\"couplingRatio\":1.0");
@@ -103,9 +103,47 @@ class GetCouplingClustersAcceptanceTest {
     }
 
     @Test
-    void globalMode_minClusterSizeFilter_excludesAllClusters() {
-        // All clusters have 2 files; requiring 3 excludes them all
-        String json = text(tool.handle(Map.of("minClusterSize", 3)));
+    void globalMode_minClusterSizeDefault_isThree() {
+        // Default minClusterSize is 3; all test clusters have 2 files → excluded by default
+        String json = text(tool.handle(Map.of()));
+        assertThat(json).isEqualTo("[]");
+    }
+
+    @Test
+    void globalMode_minClusterSizeTwo_returnsClusters() {
+        // Explicitly lower threshold to 2 to get results
+        String json = text(tool.handle(Map.of("minClusterSize", 2)));
+        assertThat(json).contains("\"clusterIndex\":1");
+        assertThat(json).contains("auth/Login.java");
+    }
+
+    @Test
+    void globalMode_maxClusterSize_excludesLargeClusters() {
+        // maxClusterSize=1 means no cluster with 2+ files is returned
+        String json = text(tool.handle(Map.of("minClusterSize", 2, "maxClusterSize", 1)));
+        assertThat(json).isEqualTo("[]");
+    }
+
+    @Test
+    void globalMode_pathFilter_returnsMatchingClustersOnly() {
+        // Filter to auth/ path — only auth cluster should appear
+        String json = text(tool.handle(Map.of("minClusterSize", 2, "pathFilter", "auth/%")));
+        assertThat(json).contains("auth/Login.java");
+        assertThat(json).contains("auth/Auth.java");
+        assertThat(json).doesNotContain("UserRepo");
+        assertThat(json).doesNotContain("OrderRepo");
+    }
+
+    @Test
+    void globalMode_pathFilter_noMatch_returnsEmpty() {
+        String json = text(tool.handle(Map.of("minClusterSize", 2, "pathFilter", "service/%")));
+        assertThat(json).isEqualTo("[]");
+    }
+
+    @Test
+    void fileMode_maxClusterSize_excludesLargeCluster() {
+        // The auth cluster has 2 files; maxClusterSize=1 excludes it
+        String json = text(tool.handle(Map.of("filePath", "auth/Login.java", "maxClusterSize", 1)));
         assertThat(json).isEqualTo("[]");
     }
 
@@ -150,15 +188,14 @@ class GetCouplingClustersAcceptanceTest {
     @Test
     void globalMode_sinceEpochMs_returnsSameClusters() {
         // epoch 0 includes all commits → same result as fast path
-        String json = text(tool.handle(Map.of("sinceEpochMs", 0)));
+        String json = text(tool.handle(Map.of("sinceEpochMs", 0, "minClusterSize", 2)));
         assertThat(json).contains("auth/Login.java");
         assertThat(json).contains("repo/UserRepo.java");
     }
 
     @Test
     void fileMode_sinceEpochMs_returnsCorrectCluster() {
-        String json =
-                text(tool.handle(Map.of("filePath", "auth/Login.java", "sinceEpochMs", 0)));
+        String json = text(tool.handle(Map.of("filePath", "auth/Login.java", "sinceEpochMs", 0)));
         assertThat(json).contains("auth/Login.java");
         assertThat(json).contains("auth/Auth.java");
         assertThat(json).doesNotContain("UserRepo");

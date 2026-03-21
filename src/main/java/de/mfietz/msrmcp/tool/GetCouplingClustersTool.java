@@ -49,22 +49,32 @@ public final class GetCouplingClustersTool {
         }
         try {
             double minCoupling = doubleArg(args, "minCoupling", 0.3);
-            int minClusterSize = intArg(args, "minClusterSize", 2);
+            int minClusterSize = intArg(args, "minClusterSize", 3);
             int topN = intArg(args, "topN", 20);
             Long sinceEpochMs = longArg(args, "sinceEpochMs");
             String filePath = stringArg(args, "filePath", null);
+            String pathFilter = stringArg(args, "pathFilter", null);
+            Object maxSizeArg = args.get("maxClusterSize");
+            Integer maxClusterSize = maxSizeArg != null ? ((Number) maxSizeArg).intValue() : null;
 
             if (filePath != null && !filePath.isBlank()) {
-                return handleFileMode(filePath, minCoupling, sinceEpochMs);
+                return handleFileMode(filePath, minCoupling, sinceEpochMs, maxClusterSize);
             }
-            return handleGlobalMode(minCoupling, minClusterSize, topN, sinceEpochMs);
+            return handleGlobalMode(
+                    minCoupling, minClusterSize, topN, sinceEpochMs, maxClusterSize, pathFilter);
         } catch (Exception e) {
             return error("get_coupling_clusters failed: " + e.getMessage());
         }
     }
 
     private CallToolResult handleGlobalMode(
-            double minCoupling, int minClusterSize, int topN, Long sinceEpochMs) throws Exception {
+            double minCoupling,
+            int minClusterSize,
+            int topN,
+            Long sinceEpochMs,
+            Integer maxClusterSize,
+            String pathFilter)
+            throws Exception {
         List<CouplingRow> rows =
                 sinceEpochMs != null
                         ? fileCouplingDao.findEdgesForClusteringSince(sinceEpochMs, minCoupling)
@@ -93,6 +103,9 @@ public final class GetCouplingClustersTool {
                 members.add(e.fileB());
             }
             if (members.size() < minClusterSize) continue;
+            if (maxClusterSize != null && members.size() > maxClusterSize) continue;
+            if (pathFilter != null && members.stream().noneMatch(f -> matchesLike(pathFilter, f)))
+                continue;
             clusters.add(buildCluster(0, clusterEdges));
         }
 
@@ -106,7 +119,8 @@ public final class GetCouplingClustersTool {
         return ok(MAPPER.writeValueAsString(result));
     }
 
-    private CallToolResult handleFileMode(String filePath, double minCoupling, Long sinceEpochMs)
+    private CallToolResult handleFileMode(
+            String filePath, double minCoupling, Long sinceEpochMs, Integer maxClusterSize)
             throws Exception {
         List<CouplingRow> rows =
                 sinceEpochMs != null
@@ -114,7 +128,24 @@ public final class GetCouplingClustersTool {
                                 filePath, sinceEpochMs, minCoupling)
                         : fileCouplingDao.findClusterForFile(filePath, minCoupling);
         if (rows.isEmpty()) return ok("[]");
-        return ok(MAPPER.writeValueAsString(List.of(buildCluster(1, rows))));
+        CouplingClusterResult cluster = buildCluster(1, rows);
+        if (maxClusterSize != null && cluster.files().size() > maxClusterSize) return ok("[]");
+        return ok(MAPPER.writeValueAsString(List.of(cluster)));
+    }
+
+    private static boolean matchesLike(String likePattern, String value) {
+        StringBuilder sb = new StringBuilder("^");
+        for (char c : likePattern.toCharArray()) {
+            switch (c) {
+                case '%' -> sb.append(".*");
+                case '_' -> sb.append(".");
+                case '.', '+', '*', '?', '(', ')', '[', ']', '{', '}', '^', '$', '|', '\\' ->
+                        sb.append('\\').append(c);
+                default -> sb.append(c);
+            }
+        }
+        sb.append("$");
+        return value.matches(sb.toString());
     }
 
     private static CouplingClusterResult buildCluster(int index, List<CouplingRow> edges) {

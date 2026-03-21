@@ -416,11 +416,29 @@ final class ToolSchemas {
                                         "type",
                                         "integer",
                                         "description",
-                                        "Minimum files per cluster (default 2, global mode only)",
+                                        "Minimum files per cluster (default 3, global mode only)",
                                         "minimum",
                                         2,
                                         "default",
+                                        3),
+                        "maxClusterSize",
+                                Map.of(
+                                        "type",
+                                        "integer",
+                                        "description",
+                                        "Maximum files per cluster; clusters exceeding this are excluded."
+                                                + " Useful for filtering out large god-clusters."
+                                                + " No default (unlimited).",
+                                        "minimum",
                                         2),
+                        "pathFilter",
+                                Map.of(
+                                        "type",
+                                        "string",
+                                        "description",
+                                        "SQL LIKE pattern; keeps only clusters where at least one file"
+                                                + " matches, e.g. \"src/auth/%\" or \"%.java\"."
+                                                + " Global mode only."),
                         "topN",
                                 Map.of(
                                         "type",
