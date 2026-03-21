@@ -190,28 +190,89 @@ public interface FileCouplingDao {
 
     @SqlQuery(
             """
-            SELECT fa.path AS file_a, fb.path AS file_b,
-              fc.co_changes, fc.total_changes_a, fc.total_changes_b,
-              CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b)
+            WITH recent AS (
+              SELECT fc.file_id, fc.commit_id
+              FROM file_changes fc
+              JOIN commits c ON c.commit_id = fc.commit_id
+              WHERE c.author_date >= :sinceEpochMs
+            ),
+            totals AS (
+              SELECT file_id, COUNT(DISTINCT commit_id) AS total_changes
+              FROM recent
+              GROUP BY file_id
+            )
+            SELECT
+              fa.path AS file_a,
+              fb.path AS file_b,
+              COUNT(DISTINCT a.commit_id) AS co_changes,
+              ta.total_changes AS total_changes_a,
+              tb.total_changes AS total_changes_b,
+              CAST(COUNT(DISTINCT a.commit_id) AS REAL) / MAX(ta.total_changes, tb.total_changes)
                 AS coupling_ratio
-            FROM file_coupling fc
-            JOIN files fa ON fa.file_id = fc.file_a_id
-            JOIN files fb ON fb.file_id = fc.file_b_id
-            WHERE 1=0
+            FROM recent a
+            JOIN recent b ON b.commit_id = a.commit_id AND a.file_id < b.file_id
+            JOIN totals ta ON ta.file_id = a.file_id
+            JOIN totals tb ON tb.file_id = b.file_id
+            JOIN files fa ON fa.file_id = a.file_id
+            JOIN files fb ON fb.file_id = b.file_id
+            GROUP BY a.file_id, b.file_id
+            HAVING coupling_ratio >= :minCoupling
+            ORDER BY coupling_ratio DESC
+            LIMIT 10000
             """)
     List<CouplingRow> findEdgesForClusteringSince(
             @Bind("sinceEpochMs") Long sinceEpochMs, @Bind("minCoupling") double minCoupling);
 
     @SqlQuery(
             """
-            SELECT fa.path AS file_a, fb.path AS file_b,
-              fc.co_changes, fc.total_changes_a, fc.total_changes_b,
-              CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b)
-                AS coupling_ratio
-            FROM file_coupling fc
-            JOIN files fa ON fa.file_id = fc.file_a_id
-            JOIN files fb ON fb.file_id = fc.file_b_id
-            WHERE 1=0
+            WITH RECURSIVE recent AS (
+              SELECT fc.file_id, fc.commit_id
+              FROM file_changes fc
+              JOIN commits c ON c.commit_id = fc.commit_id
+              WHERE c.author_date >= :sinceEpochMs
+            ),
+            totals AS (
+              SELECT file_id, COUNT(DISTINCT commit_id) AS total_changes
+              FROM recent
+              GROUP BY file_id
+            ),
+            coupling_since AS (
+              SELECT
+                a.file_id AS file_a_id,
+                b.file_id AS file_b_id,
+                COUNT(DISTINCT a.commit_id) AS co_changes,
+                ta.total_changes AS total_changes_a,
+                tb.total_changes AS total_changes_b,
+                CAST(COUNT(DISTINCT a.commit_id) AS REAL) / MAX(ta.total_changes, tb.total_changes)
+                  AS coupling_ratio
+              FROM recent a
+              JOIN recent b ON b.commit_id = a.commit_id AND a.file_id < b.file_id
+              JOIN totals ta ON ta.file_id = a.file_id
+              JOIN totals tb ON tb.file_id = b.file_id
+              GROUP BY a.file_id, b.file_id
+              HAVING coupling_ratio >= :minCoupling
+            ),
+            component(file_id) AS (
+              SELECT f.file_id FROM files f WHERE f.path = :filePath
+              UNION
+              SELECT CASE WHEN cs.file_a_id = c.file_id
+                         THEN cs.file_b_id ELSE cs.file_a_id END
+              FROM coupling_since cs
+              JOIN component c ON cs.file_a_id = c.file_id OR cs.file_b_id = c.file_id
+            )
+            SELECT
+              fa.path AS file_a,
+              fb.path AS file_b,
+              cs.co_changes,
+              cs.total_changes_a,
+              cs.total_changes_b,
+              cs.coupling_ratio
+            FROM coupling_since cs
+            JOIN files fa ON fa.file_id = cs.file_a_id
+            JOIN files fb ON fb.file_id = cs.file_b_id
+            WHERE cs.file_a_id IN (SELECT file_id FROM component)
+              AND cs.file_b_id IN (SELECT file_id FROM component)
+            ORDER BY cs.coupling_ratio DESC
             """)
     List<CouplingRow> findClusterForFileSince(
             @Bind("filePath") String filePath,
