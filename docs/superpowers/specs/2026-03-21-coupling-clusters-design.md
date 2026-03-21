@@ -14,7 +14,13 @@ Hub files (e.g. `pom.xml` changed in 1000 commits) score high against any specif
 
 Cluster-specific ratio: `co_changes / MAX(total_a, total_b)` — requires **both** files to frequently appear together. A hub file with 1000 commits and 8 co-changes with a 10-commit file scores 8/1000 = 0.008, not 0.8. Hub files are naturally excluded without any special filter.
 
-## Algorithm: Connected Components (Union-Find)
+## Two Operating Modes
+
+### Mode 1: Global scan (no `filePath`)
+
+Returns all clusters in the repo, sorted by average internal coupling.
+
+**Algorithm: Connected Components (Union-Find)**
 
 1. Fetch all file pairs from DB where `co_changes / MAX(total_a, total_b) >= minCoupling`
 2. Build undirected in-memory graph
@@ -23,19 +29,53 @@ Cluster-specific ratio: `co_changes / MAX(total_a, total_b)` — requires **both
 5. Filter components with fewer than `minClusterSize` files
 6. Sort by `avgCoupling` descending, return top `topN`
 
-**Rationale for connected components:** Simple, deterministic, no external library. Transitive coupling (A↔B and B↔C implies same domain) is semantically correct. `minCoupling` threshold controls granularity — raise it to get tighter, smaller clusters.
+**Rationale:** Simple, deterministic, no external library. Transitive coupling (A↔B and B↔C implies same domain) is semantically correct. `minCoupling` threshold controls granularity.
+
+### Mode 2: Single-file lookup (`filePath` provided)
+
+Returns the one cluster that contains the given file. Much more efficient: instead of loading the entire coupling graph, a **recursive CTE** in SQLite traverses only the reachable component from the seed file.
+
+```sql
+WITH RECURSIVE component(file_id) AS (
+  -- seed: the requested file
+  SELECT f.file_id FROM files f WHERE f.path = :filePath
+  UNION
+  -- expand: follow any coupling edge above threshold
+  SELECT CASE WHEN fc.file_a_id = c.file_id THEN fc.file_b_id ELSE fc.file_a_id END
+  FROM file_coupling fc
+  JOIN component c ON fc.file_a_id = c.file_id OR fc.file_b_id = c.file_id
+  WHERE CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b) >= :minCoupling
+)
+-- return internal edges of the component
+SELECT fa.path AS file_a, fb.path AS file_b,
+       fc.co_changes, fc.total_changes_a, fc.total_changes_b,
+       CAST(fc.co_changes AS REAL) / MAX(fc.total_changes_a, fc.total_changes_b) AS coupling_ratio
+FROM file_coupling fc
+JOIN files fa ON fa.file_id = fc.file_a_id
+JOIN files fb ON fb.file_id = fc.file_b_id
+WHERE fc.file_a_id IN (SELECT file_id FROM component)
+  AND fc.file_b_id IN (SELECT file_id FROM component)
+```
+
+Result: a single `CouplingClusterResult` (or empty array `[]` if the file has no qualifying partners).
+
+The `sinceEpochMs` variant replaces `file_coupling` with the CTE-based `file_changes` approach (same pattern as `findTopCoupledSince`), with MAX normalization.
+
+No edge cap needed in Mode 2 — the component size is bounded by the repo's actual cluster size.
 
 ## Parameters
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
+| `filePath` | string | — | If set: single-file lookup (Mode 2). If absent: global scan (Mode 1). |
 | `minCoupling` | double | 0.3 | Min threshold for `co_changes / MAX(total_a, total_b)` |
-| `minClusterSize` | int | 2 | Filter out clusters smaller than this |
-| `topN` | int | 20 | Max clusters returned, sorted by avg coupling desc; schema minimum: 1 |
-| `minClusterSize` schema note | — | — | JSON schema type `integer`, minimum `2` |
+| `minClusterSize` | int | 2 | (Mode 1 only) Filter out clusters smaller than this; JSON schema minimum: 2 |
+| `topN` | int | 20 | (Mode 1 only) Max clusters returned, sorted by avg coupling desc; JSON schema minimum: 1 |
 | `sinceEpochMs` | long | — | Optional time window (consistent with other coupling tools) |
 
 ## Output Format
+
+Same structure for both modes — an array of clusters (Mode 2 returns at most one element):
 
 ```json
 [
@@ -56,34 +96,40 @@ Cluster-specific ratio: `co_changes / MAX(total_a, total_b)` — requires **both
 Each cluster includes:
 - `clusterIndex` — 1-based ranking position
 - `files` — all files in the cluster (sorted)
-- `edges` — coupling pairs within the cluster with `coChanges` and `couplingRatio` (using MAX normalization)
-- `avgCoupling` — mean coupling ratio across all internal edges (used for ranking)
+- `edges` — coupling pairs within the cluster with `coChanges` and `couplingRatio` (MAX normalization)
+- `avgCoupling` — mean coupling ratio across all internal edges (used for ranking in Mode 1)
 
 ## Data Flow
 
 ```
-sinceEpochMs == null:
-  FileCouplingDao.findEdgesForClustering(minCoupling)
-    → SELECT from file_coupling, MAX normalization, ORDER BY coupling_ratio DESC LIMIT 10000
-
-sinceEpochMs != null:
-  FileCouplingDao.findEdgesForClusteringSince(sinceEpochMs, minCoupling)
-    → CTE on file_changes (same pattern as findTopCoupledSince), MAX normalization,
-      ORDER BY coupling_ratio DESC LIMIT 10000
+filePath == null (Mode 1):
+  sinceEpochMs == null:
+    FileCouplingDao.findEdgesForClustering(minCoupling)
+      → SELECT from file_coupling, MAX normalization, ORDER BY coupling_ratio DESC LIMIT 10000
+  sinceEpochMs != null:
+    FileCouplingDao.findEdgesForClusteringSince(sinceEpochMs, minCoupling)
+      → CTE on file_changes, MAX normalization, ORDER BY coupling_ratio DESC LIMIT 10000
       Note: MAX replaces MIN in BOTH the SELECT expression and the HAVING clause
+  → if rows.size() == 10_000: return isError("Edge cap reached …")
+  → Union-Find clustering → filter by minClusterSize → sort by avgCoupling → top topN
 
-Both paths feed into:
-  GetCouplingClustersTool.handle()
-    → if rows.size() == 10_000: return isError("Edge cap reached …")
-    → Union-Find clustering → filter → sort → serialize
+filePath != null (Mode 2):
+  sinceEpochMs == null:
+    FileCouplingDao.findClusterForFile(filePath, minCoupling)
+      → recursive CTE on file_coupling (see SQL above)
+  sinceEpochMs != null:
+    FileCouplingDao.findClusterForFileSince(filePath, sinceEpochMs, minCoupling)
+      → recursive CTE on file_changes, MAX normalization
+  → build single CouplingClusterResult from returned edges (clusterIndex = 1)
+  → return [] if no edges returned
 ```
 
 ## Files to Create / Modify
 
 | File | Change |
 |---|---|
-| `db/FileCouplingDao.java` | Add `findEdgesForClustering(minCoupling)` and `findEdgesForClusteringSince(sinceEpochMs, minCoupling)` — both return `List<CouplingRow>`, using MAX normalization |
-| `tool/GetCouplingClustersTool.java` | New tool class: `GetCouplingClustersTool(FileCouplingDao fileCouplingDao, IndexTracker tracker)` — wired in `ToolRegistry.buildSpecs` the same way as `GetSummaryTool`; Union-Find as private static inner class |
+| `db/FileCouplingDao.java` | Add 4 new queries: `findEdgesForClustering`, `findEdgesForClusteringSince`, `findClusterForFile`, `findClusterForFileSince` — all return `List<CouplingRow>`, all use MAX normalization |
+| `tool/GetCouplingClustersTool.java` | New tool: `GetCouplingClustersTool(FileCouplingDao fileCouplingDao, IndexTracker tracker)` — wired in `ToolRegistry.buildSpecs` the same way as `GetSummaryTool`; Union-Find as private static inner class (Mode 1 only) |
 | `model/CouplingClusterResult.java` | New file — record `CouplingClusterResult(int clusterIndex, List<String> files, List<ClusterEdge> edges, double avgCoupling)` |
 | `model/ClusterEdge.java` | New file — record `ClusterEdge(String fileA, String fileB, int coChanges, double couplingRatio)` |
 | `tool/ToolRegistry.java` | Register new tool |
@@ -92,9 +138,9 @@ Both paths feed into:
 ## Key Implementation Notes
 
 - **IndexTracker guard:** Return `error("Index not ready … Call get_index_status")` when `!tracker.isReady()`, matching the exact message used by all other tools.
-- **Empty graph guard:** Return empty array `[]` (not error) when no edges meet the threshold.
-- **Union-Find:** Standard path-compressed implementation as private static class inside `GetCouplingClustersTool`. No external library.
-- **Helper reuse:** Use `import static de.mfietz.msrmcp.tool.GetHotspotsTool.*` — this covers `ok()`, `error()`, `intArg()`, `longArg()`, `doubleArg()`. Do not define local copies.
-- **CouplingRow reuse:** Both new DAO queries return the existing `FileCouplingDao.CouplingRow`. SQL must alias the MAX-normalized expression as `coupling_ratio` to satisfy JDBI's `ConstructorMapper` (which matches column names to constructor parameter names). `totalChangesA` and `totalChangesB` are included for ConstructorMapper compatibility but unused by the Union-Find algorithm.
-- **Edge cap:** Fetch at most 10 000 edges from DB (`ORDER BY coupling_ratio DESC LIMIT 10000`). Sorting by ratio desc ensures the strongest edges are always included. If the cap is hit, return `isError: true` with message `"Edge cap reached (10 000 edges). Increase minCoupling to reduce graph size."` — silently returning partial clusters would produce incorrect results.
+- **Empty result guard:** Return empty array `[]` (not error) when no edges meet the threshold.
+- **Union-Find:** Standard path-compressed implementation as private static class inside `GetCouplingClustersTool`. Only used in Mode 1.
+- **Helper reuse:** Use `import static de.mfietz.msrmcp.tool.GetHotspotsTool.*` — covers `ok()`, `error()`, `intArg()`, `longArg()`, `doubleArg()`, `stringArg()`. Do not define local copies.
+- **CouplingRow reuse:** All 4 new DAO queries return `FileCouplingDao.CouplingRow`. SQL must alias the MAX-normalized expression as `coupling_ratio` to satisfy JDBI's `ConstructorMapper`. `totalChangesA` and `totalChangesB` are included for ConstructorMapper compatibility but unused by the clustering algorithm.
+- **Edge cap (Mode 1 only):** `ORDER BY coupling_ratio DESC LIMIT 10000`. Check `rows.size() == 10_000` to detect the cap. If hit, return `isError: true` with `"Edge cap reached (10 000 edges). Increase minCoupling to reduce graph size."` — silently returning partial clusters would produce incorrect results. No cap needed in Mode 2.
 - **Spotless:** Run `mvn spotless:apply` before committing (AOSP 4-space indent).
