@@ -39,6 +39,8 @@ public final class ToolRegistry {
         GetChurnTool churn = new GetChurnTool(fileChangeDao);
         GetOwnershipTool ownership = new GetOwnershipTool(commitDao);
         GetStaleFilesTool staleFiles = new GetStaleFilesTool(fileChangeDao, fileMetricsDao);
+        GetCouplingClustersTool couplingClusters =
+                new GetCouplingClustersTool(fileCouplingDao, tracker);
 
         return List.of(
                 new McpServerFeatures.SyncToolSpecification(
@@ -75,6 +77,9 @@ public final class ToolRegistry {
                         (exchange, req) -> ownership.handle(req.arguments())),
                 new McpServerFeatures.SyncToolSpecification(
                         GetStaleFilesTool.toolSpec(),
-                        (exchange, req) -> staleFiles.handle(req.arguments())));
+                        (exchange, req) -> staleFiles.handle(req.arguments())),
+                new McpServerFeatures.SyncToolSpecification(
+                        GetCouplingClustersTool.toolSpec(),
+                        (exchange, req) -> couplingClusters.handle(req.arguments())));
     }
 }
